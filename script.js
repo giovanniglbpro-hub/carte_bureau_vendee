@@ -3,6 +3,15 @@
 // ===============================
 const COMMUNE_FIELD = 'nomCommune';
 const BV_FIELD      = 'numeroBureauVote';
+const CIRCO_FIELD   = 'nomCirconscription';
+
+// Clés de stockage local
+const STORAGE_KEYS = {
+  settings: 'bvVend_settings',
+  last:     'bvVend_last',
+  favs:     'bvVend_favs',
+  hist:     'bvVend_hist'
+};
 
 // ===============================
 //  Références DOM
@@ -16,34 +25,62 @@ const maskColorInp     = document.getElementById('maskColor');
 const maskOpacityVal   = document.getElementById('maskOpacityVal');
 const othersOpacityVal = document.getElementById('othersOpacityVal');
 
-const searchInput  = document.getElementById('searchInput');
-const searchBtn    = document.getElementById('searchBtn');
-const searchStatus = document.getElementById('searchStatus');
-const exportBtn    = document.getElementById('exportBtn');
-const communeLabel = document.getElementById('communeLabel');
-const locateBtn    = document.getElementById('locateBtn');
+const searchInput   = document.getElementById('searchInput');
+const searchBtn     = document.getElementById('searchBtn');
+const searchStatus  = document.getElementById('searchStatus');
+const exportBtn     = document.getElementById('exportBtn');
+const communeLabel  = document.getElementById('communeLabel');
+const locateBtn     = document.getElementById('locateBtn');
+const radiusSelect  = document.getElementById('radiusSelect');
+const focusToggle   = document.getElementById('focusToggle');
+const basemapSelect = document.getElementById('basemapSelect');
+const resetBtn      = document.getElementById('resetBtn');
+const copyLinkBtn   = document.getElementById('copyLinkBtn');
+const helpBtn       = document.getElementById('helpBtn');
+const favAddBtn     = document.getElementById('favAddBtn');
+const favSelect     = document.getElementById('favSelect');
+const historySelect = document.getElementById('historySelect');
+const infoBV        = document.getElementById('infoBV');
 
 // ===============================
-//  Carte Leaflet
+//  Carte Leaflet + fonds
 // ===============================
-const map = L.map('map').setView([46.65, -1.35], 9); // Vue Vendée
+const baseLayers = {
+  osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap'
+  }),
+  light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap & Carto'
+  }),
+  dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap & Carto'
+  })
+};
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19,
-  attribution: '&copy; OpenStreetMap'
-}).addTo(map);
+const map = L.map('map', {
+  center: [46.65, -1.35],
+  zoom: 9,
+  layers: [baseLayers.osm]
+});
+
+let currentBase = 'osm';
 
 let geojsonLayer     = null;
 let darkMask         = null;
 let searchMarker     = null;
+let locateCircle     = null;
 let selectedCommune  = null;
 let selectedNumero   = null;
+let focusEnabled     = true;
 
 const communesSet   = new Set();
 const bvParCommune  = new Map();
 
 // ===============================
-//  Helpers réglages
+//  Helpers réglages & stockage
 // ===============================
 function getMaskOpacity() {
   return Number(maskOpacityInp.value) / 100;
@@ -67,6 +104,82 @@ function updateCommuneLabel() {
   } else {
     communeLabel.textContent = 'Commune choisie : Toutes communes';
   }
+}
+
+function saveSettings() {
+  const settings = {
+    maskOpacity:   maskOpacityInp.value,
+    othersOpacity: othersOpacityInp.value,
+    bureauColor:   bureauColorInp.value,
+    maskColor:     maskColorInp.value,
+    focusEnabled:  focusToggle.checked,
+    basemap:       currentBase,
+    darkMode:      document.body.classList.contains('dark')
+  };
+  localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
+}
+
+function loadSettings() {
+  const raw = localStorage.getItem(STORAGE_KEYS.settings);
+  if (!raw) return;
+  try {
+    const s = JSON.parse(raw);
+    if (s.maskOpacity)   maskOpacityInp.value   = s.maskOpacity;
+    if (s.othersOpacity) othersOpacityInp.value = s.othersOpacity;
+    if (s.bureauColor)   bureauColorInp.value   = s.bureauColor;
+    if (s.maskColor)     maskColorInp.value     = s.maskColor;
+    if (typeof s.focusEnabled === 'boolean') {
+      focusToggle.checked = s.focusEnabled;
+      focusEnabled = s.focusEnabled;
+    }
+    if (s.basemap && baseLayers[s.basemap]) {
+      setBasemap(s.basemap);
+      basemapSelect.value = s.basemap;
+    }
+    if (s.darkMode) {
+      document.body.classList.add('dark');
+    }
+  } catch (e) {
+    console.warn('Erreur chargement settings', e);
+  }
+}
+
+function saveLastSelection() {
+  const obj = {
+    commune: selectedCommune,
+    numero:  selectedNumero
+  };
+  localStorage.setItem(STORAGE_KEYS.last, JSON.stringify(obj));
+}
+
+function loadLastSelection() {
+  const raw = localStorage.getItem(STORAGE_KEYS.last);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function loadFavs() {
+  const raw = localStorage.getItem(STORAGE_KEYS.favs);
+  if (!raw) return [];
+  try { return JSON.parse(raw) || []; } catch { return []; }
+}
+
+function saveFavs(favs) {
+  localStorage.setItem(STORAGE_KEYS.favs, JSON.stringify(favs));
+}
+
+function loadHistory() {
+  const raw = localStorage.getItem(STORAGE_KEYS.hist);
+  if (!raw) return [];
+  try { return JSON.parse(raw) || []; } catch { return []; }
+}
+
+function saveHistory(hist) {
+  localStorage.setItem(STORAGE_KEYS.hist, JSON.stringify(hist));
 }
 
 // ===============================
@@ -104,6 +217,7 @@ function createMask(excludedLayer) {
     darkMask = null;
   }
 
+  if (!focusEnabled) return;
   if (!excludedLayer) return;
 
   const outerRing = [
@@ -212,14 +326,17 @@ function zoomToCommune(commune) {
 // ===============================
 //  Sélection du bureau
 // ===============================
-function setHighlighted(commune, numero) {
+function setHighlighted(commune, numero, options = { zoom: true }) {
   selectedCommune = commune;
   selectedNumero  = numero;
   updateCommuneLabel();
+  updateInfoBV();
   applyStyles();
+  saveLastSelection();
+  saveSettings();
 
   const layer = getHighlightedLayer();
-  if (layer) {
+  if (layer && options.zoom) {
     map.fitBounds(layer.getBounds(), { maxZoom: 17, padding: [40, 40] });
   }
 }
@@ -255,11 +372,107 @@ function populateBVSelect(commune) {
 }
 
 // ===============================
+//  Info bureau
+// ===============================
+function updateInfoBV() {
+  if (!selectedCommune || !selectedNumero || !geojsonLayer) {
+    infoBV.textContent = 'Bureau : aucun sélectionné.';
+    return;
+  }
+
+  let props = null;
+
+  geojsonLayer.eachLayer(layer => {
+    const p = layer.feature.properties;
+    if (p[COMMUNE_FIELD] === selectedCommune && p[BV_FIELD] === selectedNumero) {
+      props = p;
+    }
+  });
+
+  if (!props) {
+    infoBV.textContent = 'Bureau : aucun sélectionné.';
+    return;
+  }
+
+  const nomCommune = props[COMMUNE_FIELD];
+  const num        = props[BV_FIELD];
+  const nomBV      = props.nomBureauVote || '(nom bureau inconnu)';
+  const circo      = props[CIRCO_FIELD] || 'Circo inconnue';
+
+  infoBV.textContent =
+    `Commune : ${nomCommune} | BV ${num} – ${nomBV} | ${circo}`;
+}
+
+// ===============================
+//  Fonds de carte
+// ===============================
+function setBasemap(name) {
+  if (currentBase === name) return;
+  map.removeLayer(baseLayers[currentBase]);
+  map.addLayer(baseLayers[name]);
+  currentBase = name;
+  saveSettings();
+}
+
+// ===============================
+//  Favoris & historique
+// ===============================
+function refreshFavSelect() {
+  const favs = loadFavs();
+  favSelect.innerHTML = "<option value=''>-- Aucun --</option>";
+  favs.forEach((f, idx) => {
+    const opt = document.createElement('option');
+    opt.value = String(idx);
+    opt.textContent = `${f.commune} – BV ${f.numero}`;
+    favSelect.appendChild(opt);
+  });
+}
+
+function addCurrentToFavs() {
+  if (!selectedCommune || !selectedNumero) {
+    alert('Aucun bureau sélectionné.');
+    return;
+  }
+  const favs = loadFavs();
+  if (!favs.find(f => f.commune === selectedCommune && f.numero === selectedNumero)) {
+    favs.push({ commune: selectedCommune, numero: selectedNumero });
+    saveFavs(favs);
+    refreshFavSelect();
+    alert('Bureau ajouté aux favoris.');
+  } else {
+    alert('Ce bureau est déjà dans les favoris.');
+  }
+}
+
+function refreshHistorySelect() {
+  const hist = loadHistory();
+  historySelect.innerHTML = "<option value=''>-- Historique --</option>";
+  hist.forEach((h, idx) => {
+    const opt = document.createElement('option');
+    opt.value = String(idx);
+    opt.textContent = `${h.type === 'loc' ? '📍' : '🔎'} ${h.label}`;
+    historySelect.appendChild(opt);
+  });
+}
+
+function pushHistory(entry) {
+  const hist = loadHistory();
+  hist.unshift(entry);
+  if (hist.length > 10) hist.pop();
+  saveHistory(hist);
+  refreshHistorySelect();
+}
+
+// ===============================
 //  Chargement du GeoJSON
 // ===============================
+let initialBounds = null;
+
 fetch('bureaux.geojson')
   .then(r => r.json())
   .then(data => {
+    loadSettings();
+
     geojsonLayer = L.geoJSON(data, {
       style: styleDefault,
       onEachFeature: (feature, layer) => {
@@ -273,6 +486,15 @@ fetch('bureaux.geojson')
         }
         bvParCommune.get(commune).add(num);
 
+        // Survol (PC)
+        layer.on('mouseover', () => {
+          layer.setStyle({ weight: 3 });
+        });
+        layer.on('mouseout', () => {
+          applyStyles();
+        });
+
+        // Clic sur un bureau
         layer.on('click', () => {
           selectedCommune = commune;
           selectedNumero  = num;
@@ -282,13 +504,31 @@ fetch('bureaux.geojson')
           selectBV.value = num;
 
           setHighlighted(commune, num);
+
+          // Popup info simple
+          const circo = props[CIRCO_FIELD] || 'Circo inconnue';
+          const nomBV = props.nomBureauVote || '';
+          layer.bindPopup(
+            `<b>${commune}</b><br>BV ${num} ${nomBV ? '– ' + nomBV : ''}<br>${circo}`
+          ).openPopup();
         });
       }
     }).addTo(map);
 
-    map.fitBounds(geojsonLayer.getBounds());
+    initialBounds = geojsonLayer.getBounds();
+    map.fitBounds(initialBounds);
+
     populateCommuneSelect();
-    updateCommuneLabel();
+    syncUI();
+    refreshFavSelect();
+    refreshHistorySelect();
+
+    // Appliquer éventuels paramètres d'URL ou dernière sélection
+    applyURLParamsOrLast();
+    applyStyles();
+  })
+  .catch(err => {
+    console.error('Erreur chargement GeoJSON', err);
   });
 
 // ===============================
@@ -298,11 +538,22 @@ function syncUI() {
   maskOpacityVal.textContent   = maskOpacityInp.value + '%';
   othersOpacityVal.textContent = othersOpacityInp.value + '%';
 }
-maskOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); });
-othersOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); });
-bureauColorInp.addEventListener('input', applyStyles);
-maskColorInp.addEventListener('input', applyStyles);
-syncUI();
+maskOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); saveSettings(); });
+othersOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); saveSettings(); });
+bureauColorInp.addEventListener('input', () => { applyStyles(); saveSettings(); });
+maskColorInp.addEventListener('input', () => { applyStyles(); saveSettings(); });
+
+// Focus toggle
+focusToggle.addEventListener('change', () => {
+  focusEnabled = focusToggle.checked;
+  applyStyles();
+  saveSettings();
+});
+
+// Fond
+basemapSelect.addEventListener('change', () => {
+  setBasemap(basemapSelect.value);
+});
 
 // ===============================
 //  Sélecteurs
@@ -312,14 +563,17 @@ selectCommune.addEventListener('change', () => {
   selectedNumero  = null;
   populateBVSelect(selectedCommune);
   updateCommuneLabel();
+  updateInfoBV();
 
   if (selectedCommune) {
     zoomToCommune(selectedCommune);
-  } else if (geojsonLayer) {
-    map.fitBounds(geojsonLayer.getBounds());
+  } else if (geojsonLayer && initialBounds) {
+    map.fitBounds(initialBounds);
   }
 
   applyStyles();
+  saveLastSelection();
+  saveSettings();
 });
 
 selectBV.addEventListener('change', () => {
@@ -327,7 +581,9 @@ selectBV.addEventListener('change', () => {
     setHighlighted(selectedCommune, selectBV.value);
   } else {
     selectedNumero = null;
+    updateInfoBV();
     applyStyles();
+    saveLastSelection();
   }
 });
 
@@ -356,9 +612,16 @@ function searchAddress() {
       searchMarker = L.marker([lat, lon]).addTo(map);
       map.setView([lat, lon], 17);
 
+      drawRadiusCircle(lat, lon);
+
       const pt = turf.point([lon, lat]);
       let foundCommune = null;
       let foundNum     = null;
+
+      if (!geojsonLayer) {
+        searchStatus.textContent = 'Adresse trouvée, mais bureaux non chargés.';
+        return;
+      }
 
       geojsonLayer.eachLayer(layer => {
         if (turf.booleanPointInPolygon(pt, layer.feature)) {
@@ -377,7 +640,16 @@ function searchAddress() {
         selectBV.value = foundNum;
 
         setHighlighted(foundCommune, foundNum);
+
         searchStatus.textContent = `➡ ${foundCommune}, BV ${foundNum}`;
+
+        pushHistory({
+          type: 'search',
+          label: `${foundCommune} – BV ${foundNum}`,
+          commune: foundCommune,
+          numero: foundNum,
+          lat, lon
+        });
       } else {
         searchStatus.textContent = 'Adresse hors des bureaux enregistrés.';
       }
@@ -394,29 +666,45 @@ searchInput.addEventListener('keydown', e => {
 });
 
 // ===============================
-//  Localisation (GPS) améliorée
+//  Localisation (GPS)
 // ===============================
+function drawRadiusCircle(lat, lon) {
+  const radius = Number(radiusSelect.value || 0);
+  if (locateCircle) {
+    map.removeLayer(locateCircle);
+    locateCircle = null;
+  }
+  if (radius > 0) {
+    locateCircle = L.circle([lat, lon], {
+      radius,
+      color: '#3388ff',
+      weight: 1,
+      fillOpacity: 0.1
+    }).addTo(map);
+  }
+}
+
 function locateMe() {
   if (!navigator.geolocation) {
     alert('La géolocalisation n’est pas supportée par ce navigateur.');
     return;
   }
 
-  searchStatus.textContent = 'Demande de localisation au navigateur…';
+  searchStatus.textContent = 'Demande de localisation…';
 
   navigator.geolocation.getCurrentPosition(
     pos => {
       const lat = pos.coords.latitude;
       const lon = pos.coords.longitude;
 
-      console.log('Position GPS :', lat, lon);
-
       if (searchMarker) map.removeLayer(searchMarker);
       searchMarker = L.marker([lat, lon]).addTo(map);
       map.setView([lat, lon], 17);
 
+      drawRadiusCircle(lat, lon);
+
       if (!geojsonLayer) {
-        searchStatus.textContent = 'Localisation OK, mais les bureaux ne sont pas chargés.';
+        searchStatus.textContent = 'Localisation OK, mais bureaux non chargés.';
         return;
       }
 
@@ -441,28 +729,31 @@ function locateMe() {
         selectBV.value = foundNum;
 
         setHighlighted(foundCommune, foundNum);
+
         searchStatus.textContent = `Vous êtes dans : ${foundCommune}, BV ${foundNum}`;
+        pushHistory({
+          type: 'loc',
+          label: `${foundCommune} – BV ${foundNum}`,
+          commune: foundCommune,
+          numero: foundNum,
+          lat, lon
+        });
       } else {
-        searchStatus.textContent = 'Localisation OK, mais en dehors des bureaux enregistrés.';
+        searchStatus.textContent = 'Localisation OK, mais en dehors des bureaux enregistrés (sans doute hors Vendée).';
       }
     },
     err => {
       console.error('Erreur geoloc :', err);
-
       if (err.code === 1) {
-        searchStatus.textContent = 'Localisation refusée (vérifiez les permissions du navigateur).';
+        searchStatus.textContent = 'Localisation refusée.';
       } else if (err.code === 2) {
         searchStatus.textContent = 'Position indisponible.';
       } else if (err.code === 3) {
-        searchStatus.textContent = 'Délai de localisation dépassé.';
+        searchStatus.textContent = 'Délai dépassé.';
       } else {
         searchStatus.textContent = 'Erreur de localisation.';
       }
-
-      alert(
-        "La localisation n’a pas pu être obtenue.\n" +
-        "Vérifie dans ton navigateur que la géolocalisation est autorisée pour ce site."
-      );
+      alert("La localisation n’a pas pu être obtenue.\nVérifie les permissions de ton navigateur.");
     },
     {
       enableHighAccuracy: true,
@@ -477,37 +768,157 @@ if (locateBtn) {
 }
 
 // ===============================
-//  Export PNG
+//  Bouton Reset
 // ===============================
-exportBtn.addEventListener('click', () => {
-  const mapDiv = document.getElementById('map');
-  exportBtn.textContent = 'Export…';
-  exportBtn.disabled = true;
+function resetView() {
+  selectedCommune = null;
+  selectedNumero  = null;
+  selectCommune.value = '';
+  selectBV.innerHTML = "<option value=''>-- Choisir --</option>";
 
-  const layer = getHighlightedLayer();
+  if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
+  if (locateCircle) { map.removeLayer(locateCircle); locateCircle = null; }
+  createMask(null);
+  updateCommuneLabel();
+  updateInfoBV();
+  if (initialBounds) map.fitBounds(initialBounds);
+  applyStyles();
+  saveLastSelection();
+}
 
-  const doCapture = () => {
-    html2canvas(mapDiv, { useCORS: true }).then(canvas => {
-      const link = document.createElement('a');
-      link.download = selectedCommune && selectedNumero
-        ? `BV-${selectedCommune}-${selectedNumero}.png`
-        : 'Vendee-carte.png';
-      link.href = canvas.toDataURL();
-      link.click();
+resetBtn.addEventListener('click', resetView);
 
-      exportBtn.textContent = 'Exporter PNG';
-      exportBtn.disabled = false;
-    }).catch(() => {
-      exportBtn.textContent = 'Exporter PNG';
-      exportBtn.disabled = false;
-      alert('Erreur lors de l’export PNG.');
-    });
-  };
+// ===============================
+//  Favoris & historique UI
+// ===============================
+favAddBtn.addEventListener('click', addCurrentToFavs);
 
-  if (layer) {
-    map.fitBounds(layer.getBounds(), { maxZoom: 17, padding: [40, 40] });
-    map.once('moveend', () => setTimeout(doCapture, 200));
-  } else {
-    doCapture();
+favSelect.addEventListener('change', () => {
+  const idx = favSelect.value;
+  if (!idx) return;
+  const favs = loadFavs();
+  const f = favs[Number(idx)];
+  if (!f) return;
+  selectedCommune = f.commune;
+  selectedNumero  = f.numero;
+
+  selectCommune.value = f.commune;
+  populateBVSelect(f.commune);
+  selectBV.value = f.numero;
+
+  setHighlighted(f.commune, f.numero);
+});
+
+historySelect.addEventListener('change', () => {
+  const idx = historySelect.value;
+  if (!idx) return;
+  const hist = loadHistory();
+  const h = hist[Number(idx)];
+  if (!h) return;
+
+  if (h.lat && h.lon) {
+    if (searchMarker) map.removeLayer(searchMarker);
+    searchMarker = L.marker([h.lat, h.lon]).addTo(map);
+    map.setView([h.lat, h.lon], 17);
   }
+
+  if (h.commune && h.numero) {
+    selectedCommune = h.commune;
+    selectedNumero  = h.numero;
+
+    selectCommune.value = h.commune;
+    populateBVSelect(h.commune);
+    selectBV.value = h.numero;
+
+    setHighlighted(h.commune, h.numero);
+  }
+});
+
+// ===============================
+//  Lien partageable
+// ===============================
+function buildShareURL(commune, numero) {
+  const url = new URL(window.location.href);
+  if (commune) url.searchParams.set('commune', commune);
+  else url.searchParams.delete('commune');
+  if (numero) url.searchParams.set('bv', numero);
+  else url.searchParams.delete('bv');
+  return url.toString();
+}
+
+copyLinkBtn.addEventListener('click', () => {
+  if (!selectedCommune || !selectedNumero) {
+    alert('Sélectionne d’abord une commune et un bureau.');
+    return;
+  }
+  const link = buildShareURL(selectedCommune, selectedNumero);
+  navigator.clipboard.writeText(link)
+    .then(() => alert('Lien copié dans le presse-papiers.'))
+    .catch(() => alert(link));
+});
+
+// ===============================
+//  Paramètres d’URL / dernière sélection
+// ===============================
+function applyURLParamsOrLast() {
+  const params = new URLSearchParams(window.location.search);
+  const communeParam = params.get('commune');
+  const bvParam      = params.get('bv');
+
+  if (communeParam && communesSet.has(communeParam)) {
+    selectedCommune = communeParam;
+    selectCommune.value = communeParam;
+    populateBVSelect(communeParam);
+
+    if (bvParam && bvParCommune.get(communeParam)?.has(bvParam)) {
+      selectBV.value = bvParam;
+      selectedNumero = bvParam;
+      setHighlighted(communeParam, bvParam);
+      return;
+    } else {
+      selectedNumero = null;
+      zoomToCommune(communeParam);
+      applyStyles();
+      updateCommuneLabel();
+      return;
+    }
+  }
+
+  // Sinon, dernière sélection enregistrée
+  const last = loadLastSelection();
+  if (last && last.commune && communesSet.has(last.commune)) {
+    selectedCommune = last.commune;
+    selectCommune.value = last.commune;
+    populateBVSelect(last.commune);
+    if (last.numero && bvParCommune.get(last.commune)?.has(last.numero)) {
+      selectBV.value = last.numero;
+      selectedNumero = last.numero;
+      setHighlighted(last.commune, last.numero);
+    } else {
+      selectedNumero = null;
+      zoomToCommune(last.commune);
+      applyStyles();
+      updateCommuneLabel();
+    }
+  } else {
+    updateCommuneLabel();
+    updateInfoBV();
+  }
+}
+
+// ===============================
+//  Aide
+// ===============================
+helpBtn.addEventListener('click', () => {
+  alert(
+    "MODE D’EMPLOI RAPIDE :\n\n" +
+    "- Choisis une commune, puis un bureau de vote : la carte zoome et met en avant le BV.\n" +
+    "- Focus : active ou désactive le masque sombre autour du bureau.\n" +
+    "- Adresse : cherche une adresse et affiche dans quel bureau elle se trouve.\n" +
+    "- Me localiser : utilise ta position GPS (sur mobile surtout) pour trouver ton bureau.\n" +
+    "- Exporter PNG : télécharge une image de la carte actuelle (avec logo).\n" +
+    "- Favoris : ajoute des bureaux clés pour y revenir rapidement.\n" +
+    "- Historique : retrouve tes derniers bureaux recherchés / localisés.\n" +
+    "- Copier lien : génère un lien directement pré-filtré sur le bureau actuel."
+  );
 });
