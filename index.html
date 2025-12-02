@@ -142,7 +142,7 @@
       padding: 2px 6px;
     }
 
-    /* Mode mobile : on cache certaines options avancées et on grossit un peu le texte */
+    /* Mode mobile : interface allégée */
     body.mobile-mode #menu {
       font-size: 15px;
     }
@@ -157,7 +157,6 @@
       display: none !important;
     }
 
-    /* On remonte un peu la carte car il y a souvent moins de barres en haut */
     body.mobile-mode #map {
       height: calc(100vh - 80px);
     }
@@ -183,13 +182,7 @@
       </select>
     </div>
 
-    <!-- Réglages d'opacité (PC uniquement) -->
-    <div class="group desktop-only">
-      <label for="maskOpacity">Fond sombre :</label>
-      <input id="maskOpacity" type="range" min="0" max="100" value="50">
-      <span id="maskOpacityVal">50%</span>
-    </div>
-
+    <!-- Opacité des autres bureaux (PC uniquement) -->
     <div class="group desktop-only">
       <label for="othersOpacity">Autres bureaux :</label>
       <input id="othersOpacity" type="range" min="0" max="100" value="70">
@@ -204,13 +197,7 @@
 
     <div class="group desktop-only">
       <label for="maskColor">Couleur fond :</label>
-      <input id="maskColor" type="color" value="#000000">
-    </div>
-
-    <!-- Focus ON/OFF (PC uniquement) -->
-    <div class="group desktop-only">
-      <label for="focusToggle">Focus :</label>
-      <input id="focusToggle" type="checkbox" checked>
+      <input id="maskColor" type="color" value="#888888">
     </div>
 
     <!-- Fond de carte (PC uniquement) -->
@@ -261,11 +248,13 @@
     <!-- Favoris / Historique / Lien / Aide (PC uniquement) -->
     <div class="group desktop-only" style="flex: 1 1 100%; margin-top: 4px;">
       <button id="favAddBtn" class="btn-small">⭐ Ajouter aux favoris</button>
+      <button id="favClearBtn" class="btn-small">Effacer favoris</button>
       <label for="favSelect">Favoris :</label>
       <select id="favSelect">
         <option value="">-- Aucun --</option>
       </select>
 
+      <button id="histClearBtn" class="btn-small">Effacer historique</button>
       <label for="historySelect">Historique :</label>
       <select id="historySelect">
         <option value="">-- Vide --</option>
@@ -285,7 +274,6 @@
   <div id="legend">
     <div><span class="leg-box" style="background: transparent;"></span> Bureau sélectionné (contour coloré)</div>
     <div><span class="leg-box" style="background: #888;"></span> Autres bureaux de la commune</div>
-    <div><span class="leg-box" style="background: #000;"></span> Masque sombre (focus)</div>
   </div>
 
   <!-- Leaflet JS -->
