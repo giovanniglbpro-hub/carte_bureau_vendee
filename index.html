@@ -10,7 +10,7 @@
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
   >
 
-  <!-- Police un peu plus moderne -->
+  <!-- Police moderne -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -38,12 +38,12 @@
       color: #e5e7eb;
     }
 
-    /* Layout global : bandeau + barre de contrôles + carte + info */
     body {
       display: flex;
       flex-direction: column;
     }
 
+    /* Bandeau haut */
     #topBar {
       padding: 8px 16px;
       background: radial-gradient(circle at 0% 0%, #1d4ed8, #020617);
@@ -70,10 +70,22 @@
       justify-content: center;
     }
 
+    .logo-wrap {
+      background: #ffffff;
+      border-radius: 999px;
+      padding: 6px;
+      box-shadow:
+        0 0 0 2px rgba(15,23,42,0.28),
+        0 6px 18px rgba(15,23,42,0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
     #logoRN {
-      height: 42px;
+      height: 46px;
       width: auto;
-      filter: drop-shadow(0 0 4px rgba(15,23,42,0.6));
+      filter: none;
     }
 
     .topBar-title {
@@ -84,7 +96,7 @@
 
     .topBar-title h1 {
       margin: 0;
-      font-size: 17px;
+      font-size: 18px;
       font-weight: 600;
       letter-spacing: 0.02em;
     }
@@ -118,7 +130,7 @@
       border: 1px solid rgba(148,163,184,0.6);
       background: rgba(15,23,42,0.7);
       color: #e5e7eb;
-      padding: 4px 10px;
+      padding: 5px 12px;
       font-size: 12px;
       display: inline-flex;
       align-items: center;
@@ -141,7 +153,7 @@
       font-weight: 500;
     }
 
-    /* Barre de contrôles principale */
+    /* Barre de contrôles */
     #menu {
       width: 100%;
       padding: 8px 16px 6px;
@@ -199,7 +211,7 @@
     input[type="text"] {
       border-radius: 999px;
       border: 1px solid #d1d5db;
-      padding: 3px 8px;
+      padding: 4px 9px;
       font-size: 12px;
       background: #f9fafb;
       outline: none;
@@ -236,7 +248,7 @@
       border-radius: 999px;
       border: 1px solid #d1d5db;
       background: #f9fafb;
-      padding: 3px 8px;
+      padding: 4px 9px;
       font-size: 12px;
       cursor: pointer;
       display: inline-flex;
@@ -274,7 +286,6 @@
       color: #9ca3af;
     }
 
-    /* Commune choisie */
     #communeLabel {
       font-weight: 600;
       font-size: 13px;
@@ -343,31 +354,39 @@
       border-color: #e5e7eb;
     }
 
-    /* Mode mobile : interface allégée */
+    /* Mode mobile : interface plus grande */
     body.mobile-mode #menuInner {
-      gap: 8px 10px;
+      font-size: 14px;
+      padding: 10px 10px;
     }
 
-    body.mobile-mode .desktop-only {
-      display: none !important;
+    body.mobile-mode select,
+    body.mobile-mode input[type="text"] {
+      min-height: 32px;
+      font-size: 13px;
+      padding: 6px 10px;
     }
 
-    body.mobile-mode #menuInner {
-      padding: 8px 10px;
+    body.mobile-mode .btn-small {
+      font-size: 13px;
+      padding: 6px 11px;
     }
 
     body.mobile-mode #map {
       margin-top: 0;
     }
 
-    /* Responsive */
+    body.mobile-mode .desktop-only {
+      display: none !important;
+    }
+
     @media (max-width: 768px) {
       .topBar-inner {
         flex-direction: column;
         align-items: center;
       }
       .topBar-title h1 {
-        font-size: 15px;
+        font-size: 16px;
       }
       #menuInner {
         padding: 8px;
@@ -389,7 +408,9 @@
       </div>
 
       <div class="topBar-center">
-        <img id="logoRN" src="logorn.png" alt="Logo RN">
+        <div class="logo-wrap">
+          <img id="logoRN" src="logorn.png" alt="Logo RN">
+        </div>
         <div class="topBar-title">
           <h1>Cartographie des bureaux de vote</h1>
           <p>Outil interne de visualisation & repérage</p>
@@ -397,7 +418,6 @@
       </div>
 
       <div class="topBar-right">
-        <!-- Bouton bascule PC / Mobile (utilisé par script.js) -->
         <button id="modeBtn" class="pill-button">
           📱 Mode mobile
         </button>
@@ -408,7 +428,7 @@
   <!-- Barre de contrôles -->
   <div id="menu">
     <div id="menuInner">
-      <!-- Choix de la commune -->
+      <!-- Commune -->
       <div class="group">
         <label for="selectCommune">Commune :</label>
         <select id="selectCommune">
@@ -416,7 +436,7 @@
         </select>
       </div>
 
-      <!-- Choix du bureau -->
+      <!-- Bureau -->
       <div class="group">
         <label for="selectBV">Bureau :</label>
         <select id="selectBV">
@@ -424,14 +444,14 @@
         </select>
       </div>
 
-      <!-- Opacité des autres bureaux (PC uniquement) -->
+      <!-- Opacité autres bureaux de la commune -->
       <div class="group desktop-only">
         <label for="othersOpacity">Autres bureaux :</label>
-        <input id="othersOpacity" type="range" min="0" max="100" value="70">
-        <span id="othersOpacityVal">70%</span>
+        <input id="othersOpacity" type="range" min="0" max="100" value="30">
+        <span id="othersOpacityVal">30%</span>
       </div>
 
-      <!-- Couleurs (PC uniquement) -->
+      <!-- Couleurs -->
       <div class="group desktop-only">
         <label for="bureauColor">Couleur bureau :</label>
         <input id="bureauColor" type="color" value="#ff0000">
@@ -442,7 +462,7 @@
         <input id="maskColor" type="color" value="#888888">
       </div>
 
-      <!-- Fond de carte (PC uniquement) -->
+      <!-- Fond de carte -->
       <div class="group desktop-only">
         <label for="basemapSelect">Fond :</label>
         <select id="basemapSelect">
@@ -458,12 +478,12 @@
         <button id="resetBtn" class="btn-small">↺ Réinitialiser</button>
       </div>
 
-      <!-- Bandeau "Commune choisie" -->
+      <!-- Commune choisie -->
       <div class="group" style="flex: 1 1 100%; justify-content: center;">
         <span id="communeLabel">Commune choisie : Toutes communes</span>
       </div>
 
-      <!-- Recherche + localisation -->
+      <!-- Recherche / localisation -->
       <div class="group" style="flex: 1 1 100%; margin-top: 4px;">
         <label for="searchInput">Adresse :</label>
         <input id="searchInput" type="text" style="flex:1; min-width: 200px;" placeholder="Ex : 10 Rue x, Les Sables-d’Olonne">
@@ -479,7 +499,7 @@
         <span id="searchStatus"></span>
       </div>
 
-      <!-- Favoris / Historique / Lien / Aide (PC uniquement) -->
+      <!-- Favoris / Historique / Aide -->
       <div class="group desktop-only" style="flex: 1 1 100%; margin-top: 4px;">
         <button id="favAddBtn" class="btn-small">⭐ Ajouter aux favoris</button>
         <button id="favClearBtn" class="btn-small">🗑 Favoris</button>
@@ -510,11 +530,12 @@
 
   <!-- Légende -->
   <div id="legend">
-    <div><span class="leg-box" style="background: transparent;"></span> Bureau sélectionné (contour coloré)</div>
-    <div><span class="leg-box" style="background: #888;"></span> Autres bureaux de la commune</div>
+    <div><span class="leg-box" style="background: transparent;"></span> Bureau sélectionné (contour couleur)</div>
+    <div><span class="leg-box" style="background: #aaaaaa;"></span> Autres bureaux de la commune</div>
+    <div><span class="leg-box" style="background: #000000;"></span> Autres communes</div>
   </div>
 
-  <!-- Leaflet JS -->
+  <!-- JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
