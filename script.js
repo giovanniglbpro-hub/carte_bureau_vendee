@@ -41,6 +41,7 @@ const favAddBtn     = document.getElementById('favAddBtn');
 const favSelect     = document.getElementById('favSelect');
 const historySelect = document.getElementById('historySelect');
 const infoBV        = document.getElementById('infoBV');
+const modeBtn       = document.getElementById('modeBtn');
 
 // ===============================
 //  Carte Leaflet + fonds
@@ -75,6 +76,7 @@ let locateCircle     = null;
 let selectedCommune  = null;
 let selectedNumero   = null;
 let focusEnabled     = true;
+let uiMode           = 'pc'; // 'pc' ou 'mobile'
 
 const communesSet   = new Set();
 const bvParCommune  = new Map();
@@ -83,19 +85,19 @@ const bvParCommune  = new Map();
 //  Helpers réglages & stockage
 // ===============================
 function getMaskOpacity() {
-  return Number(maskOpacityInp.value) / 100;
+  return Number(maskOpacityInp?.value || 50) / 100;
 }
 
 function getOthersOpacity() {
-  return Number(othersOpacityInp.value) / 100;
+  return Number(othersOpacityInp?.value || 70) / 100;
 }
 
 function getBureauColor() {
-  return bureauColorInp.value;
+  return bureauColorInp?.value || '#ff0000';
 }
 
 function getMaskColor() {
-  return maskColorInp.value;
+  return maskColorInp?.value || '#000000';
 }
 
 function updateCommuneLabel() {
@@ -108,13 +110,14 @@ function updateCommuneLabel() {
 
 function saveSettings() {
   const settings = {
-    maskOpacity:   maskOpacityInp.value,
-    othersOpacity: othersOpacityInp.value,
-    bureauColor:   bureauColorInp.value,
-    maskColor:     maskColorInp.value,
-    focusEnabled:  focusToggle.checked,
+    maskOpacity:   maskOpacityInp ? maskOpacityInp.value : null,
+    othersOpacity: othersOpacityInp ? othersOpacityInp.value : null,
+    bureauColor:   bureauColorInp ? bureauColorInp.value : null,
+    maskColor:     maskColorInp ? maskColorInp.value : null,
+    focusEnabled:  focusToggle ? focusToggle.checked : true,
     basemap:       currentBase,
-    darkMode:      document.body.classList.contains('dark')
+    darkMode:      document.body.classList.contains('dark'),
+    mode:          uiMode
   };
   localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
 }
@@ -124,20 +127,23 @@ function loadSettings() {
   if (!raw) return;
   try {
     const s = JSON.parse(raw);
-    if (s.maskOpacity)   maskOpacityInp.value   = s.maskOpacity;
-    if (s.othersOpacity) othersOpacityInp.value = s.othersOpacity;
-    if (s.bureauColor)   bureauColorInp.value   = s.bureauColor;
-    if (s.maskColor)     maskColorInp.value     = s.maskColor;
-    if (typeof s.focusEnabled === 'boolean') {
+    if (s.maskOpacity && maskOpacityInp)   maskOpacityInp.value   = s.maskOpacity;
+    if (s.othersOpacity && othersOpacityInp) othersOpacityInp.value = s.othersOpacity;
+    if (s.bureauColor && bureauColorInp)   bureauColorInp.value   = s.bureauColor;
+    if (s.maskColor && maskColorInp)       maskColorInp.value     = s.maskColor;
+    if (typeof s.focusEnabled === 'boolean' && focusToggle) {
       focusToggle.checked = s.focusEnabled;
       focusEnabled = s.focusEnabled;
     }
     if (s.basemap && baseLayers[s.basemap]) {
-      setBasemap(s.basemap);
-      basemapSelect.value = s.basemap;
+      setBasemap(s.basemap, false);
+      if (basemapSelect) basemapSelect.value = s.basemap;
     }
     if (s.darkMode) {
       document.body.classList.add('dark');
+    }
+    if (s.mode) {
+      applyMode(s.mode, false);
     }
   } catch (e) {
     console.warn('Erreur chargement settings', e);
@@ -180,6 +186,36 @@ function loadHistory() {
 
 function saveHistory(hist) {
   localStorage.setItem(STORAGE_KEYS.hist, JSON.stringify(hist));
+}
+
+// ===============================
+//  Mode PC / Mobile
+// ===============================
+function applyMode(mode, save = true) {
+  uiMode = mode === 'mobile' ? 'mobile' : 'pc';
+  if (uiMode === 'mobile') {
+    document.body.classList.add('mobile-mode');
+    if (modeBtn) modeBtn.textContent = 'Mode PC';
+  } else {
+    document.body.classList.remove('mobile-mode');
+    if (modeBtn) modeBtn.textContent = 'Mode mobile';
+  }
+  if (save) saveSettings();
+}
+
+if (modeBtn) {
+  modeBtn.addEventListener('click', () => {
+    applyMode(uiMode === 'pc' ? 'mobile' : 'pc');
+  });
+}
+
+// Auto-mode par défaut selon largeur écran (si aucun réglage en mémoire)
+if (!localStorage.getItem(STORAGE_KEYS.settings)) {
+  if (window.innerWidth < 768) {
+    applyMode('mobile', false);
+  } else {
+    applyMode('pc', false);
+  }
 }
 
 // ===============================
@@ -406,12 +442,12 @@ function updateInfoBV() {
 // ===============================
 //  Fonds de carte
 // ===============================
-function setBasemap(name) {
+function setBasemap(name, save = true) {
   if (currentBase === name) return;
   map.removeLayer(baseLayers[currentBase]);
   map.addLayer(baseLayers[name]);
   currentBase = name;
-  saveSettings();
+  if (save) saveSettings();
 }
 
 // ===============================
@@ -419,6 +455,7 @@ function setBasemap(name) {
 // ===============================
 function refreshFavSelect() {
   const favs = loadFavs();
+  if (!favSelect) return;
   favSelect.innerHTML = "<option value=''>-- Aucun --</option>";
   favs.forEach((f, idx) => {
     const opt = document.createElement('option');
@@ -446,6 +483,7 @@ function addCurrentToFavs() {
 
 function refreshHistorySelect() {
   const hist = loadHistory();
+  if (!historySelect) return;
   historySelect.innerHTML = "<option value=''>-- Historique --</option>";
   hist.forEach((h, idx) => {
     const opt = document.createElement('option');
@@ -535,25 +573,41 @@ fetch('bureaux.geojson')
 //  UI sliders
 // ===============================
 function syncUI() {
-  maskOpacityVal.textContent   = maskOpacityInp.value + '%';
-  othersOpacityVal.textContent = othersOpacityInp.value + '%';
+  if (maskOpacityVal && maskOpacityInp) {
+    maskOpacityVal.textContent   = maskOpacityInp.value + '%';
+  }
+  if (othersOpacityVal && othersOpacityInp) {
+    othersOpacityVal.textContent = othersOpacityInp.value + '%';
+  }
 }
-maskOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); saveSettings(); });
-othersOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); saveSettings(); });
-bureauColorInp.addEventListener('input', () => { applyStyles(); saveSettings(); });
-maskColorInp.addEventListener('input', () => { applyStyles(); saveSettings(); });
+if (maskOpacityInp) {
+  maskOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); saveSettings(); });
+}
+if (othersOpacityInp) {
+  othersOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); saveSettings(); });
+}
+if (bureauColorInp) {
+  bureauColorInp.addEventListener('input', () => { applyStyles(); saveSettings(); });
+}
+if (maskColorInp) {
+  maskColorInp.addEventListener('input', () => { applyStyles(); saveSettings(); });
+}
 
 // Focus toggle
-focusToggle.addEventListener('change', () => {
-  focusEnabled = focusToggle.checked;
-  applyStyles();
-  saveSettings();
-});
+if (focusToggle) {
+  focusToggle.addEventListener('change', () => {
+    focusEnabled = focusToggle.checked;
+    applyStyles();
+    saveSettings();
+  });
+}
 
 // Fond
-basemapSelect.addEventListener('change', () => {
-  setBasemap(basemapSelect.value);
-});
+if (basemapSelect) {
+  basemapSelect.addEventListener('change', () => {
+    setBasemap(basemapSelect.value, true);
+  });
+}
 
 // ===============================
 //  Sélecteurs
@@ -590,6 +644,23 @@ selectBV.addEventListener('change', () => {
 // ===============================
 //  Recherche d'adresse
 // ===============================
+function drawRadiusCircle(lat, lon) {
+  if (!radiusSelect) return;
+  const radius = Number(radiusSelect.value || 0);
+  if (locateCircle) {
+    map.removeLayer(locateCircle);
+    locateCircle = null;
+  }
+  if (radius > 0) {
+    locateCircle = L.circle([lat, lon], {
+      radius,
+      color: '#3388ff',
+      weight: 1,
+      fillOpacity: 0.1
+    }).addTo(map);
+  }
+}
+
 function searchAddress() {
   const q = searchInput.value.trim();
   if (!q) return;
@@ -668,22 +739,6 @@ searchInput.addEventListener('keydown', e => {
 // ===============================
 //  Localisation (GPS)
 // ===============================
-function drawRadiusCircle(lat, lon) {
-  const radius = Number(radiusSelect.value || 0);
-  if (locateCircle) {
-    map.removeLayer(locateCircle);
-    locateCircle = null;
-  }
-  if (radius > 0) {
-    locateCircle = L.circle([lat, lon], {
-      radius,
-      color: '#3388ff',
-      weight: 1,
-      fillOpacity: 0.1
-    }).addTo(map);
-  }
-}
-
 function locateMe() {
   if (!navigator.geolocation) {
     alert('La géolocalisation n’est pas supportée par ce navigateur.');
@@ -791,48 +846,55 @@ resetBtn.addEventListener('click', resetView);
 // ===============================
 //  Favoris & historique UI
 // ===============================
-favAddBtn.addEventListener('click', addCurrentToFavs);
+if (favAddBtn) {
+  favAddBtn.addEventListener('click', addCurrentToFavs);
+}
 
-favSelect.addEventListener('change', () => {
-  const idx = favSelect.value;
-  if (!idx) return;
-  const favs = loadFavs();
-  const f = favs[Number(idx)];
-  if (!f) return;
-  selectedCommune = f.commune;
-  selectedNumero  = f.numero;
+if (favSelect) {
+  favSelect.addEventListener('change', () => {
+    const idx = favSelect.value;
+    if (!idx) return;
+    const favs = loadFavs();
+    const f = favs[Number(idx)];
+    if (!f) return;
+    selectedCommune = f.commune;
+    selectedNumero  = f.numero;
 
-  selectCommune.value = f.commune;
-  populateBVSelect(f.commune);
-  selectBV.value = f.numero;
+    selectCommune.value = f.commune;
+    populateBVSelect(f.commune);
+    selectBV.value = f.numero;
 
-  setHighlighted(f.commune, f.numero);
-});
+    setHighlighted(f.commune, f.numero);
+  });
+}
 
-historySelect.addEventListener('change', () => {
-  const idx = historySelect.value;
-  if (!idx) return;
-  const hist = loadHistory();
-  const h = hist[Number(idx)];
-  if (!h) return;
+if (historySelect) {
+  historySelect.addEventListener('change', () => {
+    const idx = historySelect.value;
+    if (!idx) return;
+    const hist = loadHistory();
+    const h = hist[Number(idx)];
+    if (!h) return;
 
-  if (h.lat && h.lon) {
-    if (searchMarker) map.removeLayer(searchMarker);
-    searchMarker = L.marker([h.lat, h.lon]).addTo(map);
-    map.setView([h.lat, h.lon], 17);
-  }
+    if (h.lat && h.lon) {
+      if (searchMarker) map.removeLayer(searchMarker);
+      searchMarker = L.marker([h.lat, h.lon]).addTo(map);
+      map.setView([h.lat, h.lon], 17);
+      drawRadiusCircle(h.lat, h.lon);
+    }
 
-  if (h.commune && h.numero) {
-    selectedCommune = h.commune;
-    selectedNumero  = h.numero;
+    if (h.commune && h.numero) {
+      selectedCommune = h.commune;
+      selectedNumero  = h.numero;
 
-    selectCommune.value = h.commune;
-    populateBVSelect(h.commune);
-    selectBV.value = h.numero;
+      selectCommune.value = h.commune;
+      populateBVSelect(h.commune);
+      selectBV.value = h.numero;
 
-    setHighlighted(h.commune, h.numero);
-  }
-});
+      setHighlighted(h.commune, h.numero);
+    }
+  });
+}
 
 // ===============================
 //  Lien partageable
@@ -846,16 +908,18 @@ function buildShareURL(commune, numero) {
   return url.toString();
 }
 
-copyLinkBtn.addEventListener('click', () => {
-  if (!selectedCommune || !selectedNumero) {
-    alert('Sélectionne d’abord une commune et un bureau.');
-    return;
-  }
-  const link = buildShareURL(selectedCommune, selectedNumero);
-  navigator.clipboard.writeText(link)
-    .then(() => alert('Lien copié dans le presse-papiers.'))
-    .catch(() => alert(link));
-});
+if (copyLinkBtn) {
+  copyLinkBtn.addEventListener('click', () => {
+    if (!selectedCommune || !selectedNumero) {
+      alert('Sélectionne d’abord une commune et un bureau.');
+      return;
+    }
+    const link = buildShareURL(selectedCommune, selectedNumero);
+    navigator.clipboard.writeText(link)
+      .then(() => alert('Lien copié dans le presse-papiers.'))
+      .catch(() => alert(link));
+  });
+}
 
 // ===============================
 //  Paramètres d’URL / dernière sélection
@@ -893,7 +957,9 @@ function applyURLParamsOrLast() {
     if (last.numero && bvParCommune.get(last.commune)?.has(last.numero)) {
       selectBV.value = last.numero;
       selectedNumero = last.numero;
-      setHighlighted(last.commune, last.numero);
+      setHighlighted(last.commune, last.numero, { zoom: false });
+      zoomToCommune(last.commune);
+      applyStyles();
     } else {
       selectedNumero = null;
       zoomToCommune(last.commune);
@@ -909,16 +975,19 @@ function applyURLParamsOrLast() {
 // ===============================
 //  Aide
 // ===============================
-helpBtn.addEventListener('click', () => {
-  alert(
-    "MODE D’EMPLOI RAPIDE :\n\n" +
-    "- Choisis une commune, puis un bureau de vote : la carte zoome et met en avant le BV.\n" +
-    "- Focus : active ou désactive le masque sombre autour du bureau.\n" +
-    "- Adresse : cherche une adresse et affiche dans quel bureau elle se trouve.\n" +
-    "- Me localiser : utilise ta position GPS (sur mobile surtout) pour trouver ton bureau.\n" +
-    "- Exporter PNG : télécharge une image de la carte actuelle (avec logo).\n" +
-    "- Favoris : ajoute des bureaux clés pour y revenir rapidement.\n" +
-    "- Historique : retrouve tes derniers bureaux recherchés / localisés.\n" +
-    "- Copier lien : génère un lien directement pré-filtré sur le bureau actuel."
-  );
-});
+if (helpBtn) {
+  helpBtn.addEventListener('click', () => {
+    alert(
+      "MODE D’EMPLOI RAPIDE :\n\n" +
+      "- Choisis une commune, puis un bureau : la carte zoome et met en avant le BV.\n" +
+      "- Mode mobile : interface allégée, idéale sur smartphone.\n" +
+      "- Focus (PC) : active ou désactive le masque sombre autour du bureau.\n" +
+      "- Adresse : cherche une adresse et affiche dans quel bureau elle se trouve.\n" +
+      "- Me localiser : utilise ta position GPS pour trouver ton bureau.\n" +
+      "- Exporter PNG : télécharge une image de la carte actuelle (avec logo).\n" +
+      "- Favoris (PC) : ajoute des bureaux clés pour y revenir rapidement.\n" +
+      "- Historique (PC) : retrouve tes derniers bureaux recherchés / localisés.\n" +
+      "- Copier lien (PC) : génère un lien directement pré-filtré sur le bureau actuel."
+    );
+  });
+}
