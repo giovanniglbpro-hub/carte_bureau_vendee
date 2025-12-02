@@ -19,6 +19,11 @@
       font-family: Arial, sans-serif;
     }
 
+    body.dark {
+      background: #111;
+      color: #eee;
+    }
+
     #menu {
       width: 100%;
       padding: 8px 12px;
@@ -30,6 +35,12 @@
       gap: 8px 16px;
       align-items: center;
       font-size: 14px;
+    }
+
+    body.dark #menu {
+      background: #222;
+      border-bottom-color: #444;
+      color: #eee;
     }
 
     #menu label {
@@ -47,13 +58,18 @@
 
     #map {
       width: 100%;
-      height: calc(100vh - 60px);
+      height: calc(100vh - 90px);
+      position: relative;
     }
 
     #searchStatus {
       font-size: 12px;
       color: #555;
       margin-left: 6px;
+    }
+
+    body.dark #searchStatus {
+      color: #ddd;
     }
 
     .group {
@@ -70,6 +86,60 @@
 
     #communeLabel {
       font-weight: bold;
+    }
+
+    #infoBV {
+      width: 100%;
+      padding: 4px 12px;
+      box-sizing: border-box;
+      font-size: 13px;
+      background: #fafafa;
+      border-top: 1px solid #ddd;
+    }
+
+    body.dark #infoBV {
+      background: #181818;
+      border-top-color: #444;
+      color: #eee;
+    }
+
+    #legend {
+      position: fixed;
+      right: 12px;
+      bottom: 12px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      border: 1px solid #ccc;
+    }
+
+    body.dark #legend {
+      background: rgba(20, 20, 20, 0.9);
+      border-color: #555;
+      color: #eee;
+    }
+
+    #legend div {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 2px;
+    }
+
+    .leg-box {
+      width: 12px;
+      height: 12px;
+      border: 1px solid #000;
+      box-sizing: border-box;
+    }
+
+    body.dark .leg-box {
+      border-color: #fff;
+    }
+
+    .btn-small {
+      padding: 2px 6px;
     }
   </style>
 </head>
@@ -117,10 +187,30 @@
       <input id="maskColor" type="color" value="#000000">
     </div>
 
-    <!-- Export PNG -->
+    <!-- Focus ON/OFF -->
     <div class="group">
-      <button id="exportBtn">Exporter PNG</button>
+      <label for="focusToggle">Focus :</label>
+      <input id="focusToggle" type="checkbox" checked>
     </div>
+
+    <!-- Fond de carte -->
+    <div class="group">
+      <label for="basemapSelect">Fond :</label>
+      <select id="basemapSelect">
+        <option value="osm">OSM</option>
+        <option value="light">Clair</option>
+        <option value="dark">Nuit</option>
+      </select>
+    </div>
+
+    <!-- Export / Reset -->
+    <div class="group">
+      <button id="exportBtn" class="btn-small">Exporter PNG</button>
+      <button id="resetBtn" class="btn-small">Réinitialiser</button>
+    </div>
+
+    <!-- Logo RN -->
+    <img id="logoRN" src="logorn.png" alt="Logo RN">
 
     <!-- Bandeau "Commune choisie" centré -->
     <div class="group" style="flex: 1 1 100%; justify-content: center;">
@@ -131,16 +221,47 @@
     <div class="group" style="flex: 1 1 100%; margin-top: 4px;">
       <label for="searchInput">Adresse :</label>
       <input id="searchInput" type="text" style="flex:1; min-width: 200px;" placeholder="Ex : 10 Rue x, Les Sables-d’Olonne">
-      <button id="searchBtn">Rechercher</button>
-      <button id="locateBtn">Me localiser</button>
+      <button id="searchBtn" class="btn-small">Rechercher</button>
+      <button id="locateBtn" class="btn-small">Me localiser</button>
+      <label for="radiusSelect">Rayon :</label>
+      <select id="radiusSelect">
+        <option value="0">Aucun</option>
+        <option value="200">200 m</option>
+        <option value="500" selected>500 m</option>
+        <option value="1000">1 km</option>
+      </select>
       <span id="searchStatus"></span>
     </div>
 
-    <!-- Logo RN -->
-    <img id="logoRN" src="logorn.png" alt="Logo RN">
+    <!-- Favoris / Historique / Lien / Aide -->
+    <div class="group" style="flex: 1 1 100%; margin-top: 4px;">
+      <button id="favAddBtn" class="btn-small">⭐ Ajouter aux favoris</button>
+      <label for="favSelect">Favoris :</label>
+      <select id="favSelect">
+        <option value="">-- Aucun --</option>
+      </select>
+
+      <label for="historySelect">Historique :</label>
+      <select id="historySelect">
+        <option value="">-- Vide --</option>
+      </select>
+
+      <button id="copyLinkBtn" class="btn-small">Copier lien</button>
+      <button id="helpBtn" class="btn-small">Aide</button>
+    </div>
   </div>
 
   <div id="map"></div>
+
+  <div id="infoBV">
+    Bureau : aucun sélectionné.
+  </div>
+
+  <div id="legend">
+    <div><span class="leg-box" style="background: transparent;"></span> Bureau sélectionné (contour coloré)</div>
+    <div><span class="leg-box" style="background: #888;"></span> Autres bureaux de la commune</div>
+    <div><span class="leg-box" style="background: #000;"></span> Masque sombre (focus)</div>
+  </div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
