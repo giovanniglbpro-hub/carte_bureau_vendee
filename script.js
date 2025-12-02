@@ -1,11 +1,11 @@
 // ===============================
-//  Configuration selon ton GeoJSON
+//  Configuration champs GeoJSON
 // ===============================
 const COMMUNE_FIELD = 'nomCommune';
 const BV_FIELD      = 'numeroBureauVote';
 const CIRCO_FIELD   = 'nomCirconscription';
 
-// Clés pour le stockage local (uniquement dans ton navigateur)
+// Clés de stockage local (uniquement sur TON navigateur)
 const STORAGE_KEYS = {
   settings: 'bvVend_settings',
   last:     'bvVend_last',
@@ -19,26 +19,29 @@ const STORAGE_KEYS = {
 const selectCommune    = document.getElementById('selectCommune');
 const selectBV         = document.getElementById('selectBV');
 const othersOpacityInp = document.getElementById('othersOpacity');
+const othersOpacityVal = document.getElementById('othersOpacityVal');
 const bureauColorInp   = document.getElementById('bureauColor');
 const maskColorInp     = document.getElementById('maskColor');
-const othersOpacityVal = document.getElementById('othersOpacityVal');
 
 const searchInput   = document.getElementById('searchInput');
 const searchBtn     = document.getElementById('searchBtn');
 const searchStatus  = document.getElementById('searchStatus');
-const exportBtn     = document.getElementById('exportBtn');
-const communeLabel  = document.getElementById('communeLabel');
 const locateBtn     = document.getElementById('locateBtn');
 const radiusSelect  = document.getElementById('radiusSelect');
+
 const basemapSelect = document.getElementById('basemapSelect');
+const exportBtn     = document.getElementById('exportBtn');
 const resetBtn      = document.getElementById('resetBtn');
-const copyLinkBtn   = document.getElementById('copyLinkBtn');
-const helpBtn       = document.getElementById('helpBtn');
+
 const favAddBtn     = document.getElementById('favAddBtn');
 const favClearBtn   = document.getElementById('favClearBtn');
 const favSelect     = document.getElementById('favSelect');
 const histClearBtn  = document.getElementById('histClearBtn');
 const historySelect = document.getElementById('historySelect');
+
+const copyLinkBtn   = document.getElementById('copyLinkBtn');
+const helpBtn       = document.getElementById('helpBtn');
+const communeLabel  = document.getElementById('communeLabel');
 const infoBV        = document.getElementById('infoBV');
 const modeBtn       = document.getElementById('modeBtn');
 
@@ -65,32 +68,31 @@ const map = L.map('map', {
   zoom: 9,
   layers: [baseLayers.osm]
 });
-
 let currentBase = 'osm';
 
+// ===============================
+//  État courant
+// ===============================
 let geojsonLayer    = null;
 let searchMarker    = null;
 let locateCircle    = null;
 let selectedCommune = null;
 let selectedNumero  = null;
-let uiMode          = 'pc'; // 'pc' ou 'mobile'
+let uiMode          = 'pc'; // "pc" ou "mobile" (pas stocké)
 
 const communesSet  = new Set();
 const bvParCommune = new Map();
 let initialBounds  = null;
 
 // ===============================
-//  Helpers réglages & stockage
+//  Helpers de style
 // ===============================
 function getOthersOpacity() {
   return Number(othersOpacityInp?.value || 30) / 100;
 }
-
 function getBureauColor() {
   return bureauColorInp?.value || '#ff0000';
 }
-
-// Couleur des autres bureaux de la commune
 function getMaskColor() {
   return maskColorInp?.value || '#888888';
 }
@@ -103,18 +105,126 @@ function updateCommuneLabel() {
   }
 }
 
+// Calcul du style d’un polygone selon l’état actuel
+function computeStyle(feature) {
+  const props   = feature.properties;
+  const commune = props[COMMUNE_FIELD];
+  const num     = props[BV_FIELD];
+
+  // 1) Aucune commune sélectionnée
+  if (!selectedCommune) {
+    return {
+      color: '#000000',
+      weight: 1,
+      opacity: 0.8,
+      fillColor: '#bbbbbb',
+      fillOpacity: 0.2
+    };
+  }
+
+  // 2) Commune sélectionnée, pas encore de bureau
+  if (selectedCommune && !selectedNumero) {
+    if (commune === selectedCommune) {
+      // Commune choisie : très léger gris
+      return {
+        color: '#000000',
+        weight: 1.3,
+        opacity: 0.9,
+        fillColor: '#aaaaaa',
+        fillOpacity: 0.15
+      };
+    } else {
+      // Autres communes : très foncées
+      return {
+        color: '#000000',
+        weight: 0,
+        opacity: 0,
+        fillColor: '#000000',
+        fillOpacity: 0.75
+      };
+    }
+  }
+
+  // 3) Commune + bureau sélectionnés
+  if (selectedCommune && selectedNumero) {
+    if (commune !== selectedCommune) {
+      // Autres communes : très foncées
+      return {
+        color: '#000000',
+        weight: 0,
+        opacity: 0,
+        fillColor: '#000000',
+        fillOpacity: 0.75
+      };
+    }
+
+    // Même commune
+    if (num === selectedNumero) {
+      // Bureau sélectionné : contour couleur, intérieur transparent
+      return {
+        color: getBureauColor(),
+        weight: 3,
+        opacity: 1,
+        fillColor: getBureauColor(),
+        fillOpacity: 0
+      };
+    }
+
+    // Autres bureaux de la commune
+    return {
+      color: '#000000',
+      weight: 1,
+      opacity: 0.8,
+      fillColor: getMaskColor(),
+      fillOpacity: getOthersOpacity()
+    };
+  }
+
+  // fallback
+  return {
+    color: '#000000',
+    weight: 1,
+    opacity: 0.8,
+    fillColor: '#bbbbbb',
+    fillOpacity: 0.2
+  };
+}
+
+// Applique le style à tous les polygones
+function applyStyles() {
+  if (!geojsonLayer) return;
+  geojsonLayer.eachLayer(layer => {
+    layer.setStyle(computeStyle(layer.feature));
+  });
+}
+
+function getHighlightedLayer() {
+  let res = null;
+  if (!geojsonLayer) return null;
+  geojsonLayer.eachLayer(layer => {
+    const props = layer.feature.properties;
+    if (
+      props[COMMUNE_FIELD] === selectedCommune &&
+      props[BV_FIELD] === selectedNumero
+    ) {
+      res = layer;
+    }
+  });
+  return res;
+}
+
+// ===============================
+//  Stockage réglages & sélection
+// ===============================
 function saveSettings() {
   const settings = {
     othersOpacity: othersOpacityInp ? othersOpacityInp.value : null,
-    bureauColor:   bureauColorInp ? bureauColorInp.value : null,
-    maskColor:     maskColorInp ? maskColorInp.value : null,
-    basemap:       currentBase,
-    darkMode:      document.body.classList.contains('dark'),
-    mode:          uiMode
+    bureauColor:   bureauColorInp ? bureauColorInp.value   : null,
+    maskColor:     maskColorInp ? maskColorInp.value       : null,
+    basemap:       currentBase
   };
   localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
 }
-
 function loadSettings() {
   const raw = localStorage.getItem(STORAGE_KEYS.settings);
   if (!raw) return;
@@ -127,294 +237,78 @@ function loadSettings() {
       setBasemap(s.basemap, false);
       if (basemapSelect) basemapSelect.value = s.basemap;
     }
-    if (s.darkMode) {
-      document.body.classList.add('dark');
-    }
-    if (s.mode) {
-      applyMode(s.mode, false);
-    }
   } catch (e) {
     console.warn('Erreur chargement settings', e);
   }
 }
 
 function saveLastSelection() {
-  const obj = {
-    commune: selectedCommune,
-    numero:  selectedNumero
-  };
+  const obj = { commune: selectedCommune, numero: selectedNumero };
   localStorage.setItem(STORAGE_KEYS.last, JSON.stringify(obj));
 }
-
 function loadLastSelection() {
   const raw = localStorage.getItem(STORAGE_KEYS.last);
   if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function loadFavs() {
-  const raw = localStorage.getItem(STORAGE_KEYS.favs);
-  if (!raw) return [];
-  try { return JSON.parse(raw) || []; } catch { return []; }
-}
-
-function saveFavs(favs) {
-  localStorage.setItem(STORAGE_KEYS.favs, JSON.stringify(favs));
-}
-
-function loadHistory() {
-  const raw = localStorage.getItem(STORAGE_KEYS.hist);
-  if (!raw) return [];
-  try { return JSON.parse(raw) || []; } catch { return []; }
-}
-
-function saveHistory(hist) {
-  localStorage.setItem(STORAGE_KEYS.hist, JSON.stringify(hist));
+  try { return JSON.parse(raw); } catch { return null; }
 }
 
 // ===============================
-//  Mode PC / Mobile
+//  Mode PC / Mobile (AUTO)
 // ===============================
-function applyMode(mode, save = true) {
-  uiMode = mode === 'mobile' ? 'mobile' : 'pc';
-  if (uiMode === 'mobile') {
+function setUIModeFromWidth() {
+  if (window.innerWidth < 900) {
+    uiMode = 'mobile';
     document.body.classList.add('mobile-mode');
     if (modeBtn) modeBtn.textContent = 'Mode PC';
   } else {
+    uiMode = 'pc';
     document.body.classList.remove('mobile-mode');
     if (modeBtn) modeBtn.textContent = 'Mode mobile';
   }
-  if (save) saveSettings();
 }
+setUIModeFromWidth();
+window.addEventListener('resize', () => {
+  setUIModeFromWidth();
+});
 
+// bouton de bascule (sans stockage)
 if (modeBtn) {
   modeBtn.addEventListener('click', () => {
-    applyMode(uiMode === 'pc' ? 'mobile' : 'pc');
-  });
-}
-
-if (!localStorage.getItem(STORAGE_KEYS.settings)) {
-  if (window.innerWidth < 768) {
-    applyMode('mobile', false);
-  } else {
-    applyMode('pc', false);
-  }
-}
-
-// ===============================
-//  Styles des bureaux
-// ===============================
-
-// Style de base quand aucune commune n'est sélectionnée
-function baseStyle(feature) {
-  return {
-    color: '#000000',
-    weight: 1,
-    opacity: 0.8,
-    fillColor: '#bbbbbb',
-    fillOpacity: 0.2
-  };
-}
-
-// Applique le style en fonction de la sélection actuelle
-function applyStyles() {
-  if (!geojsonLayer) return;
-
-  geojsonLayer.eachLayer(layer => {
-    const props   = layer.feature.properties;
-    const commune = props[COMMUNE_FIELD];
-    const num     = props[BV_FIELD];
-
-    // Aucune commune sélectionnée -> style de base
-    if (!selectedCommune) {
-      layer.setStyle(baseStyle(layer.feature));
-      return;
-    }
-
-    // Autres communes -> très foncé
-    if (commune !== selectedCommune) {
-      layer.setStyle({
-        color: '#000000',
-        weight: 0,
-        opacity: 0,
-        fillColor: '#000000',
-        fillOpacity: 0.7
-      });
-      return;
-    }
-
-    // Même commune :
-
-    // Bureau sélectionné -> contour couleur, intérieur transparent
-    if (selectedNumero && num === selectedNumero) {
-      layer.setStyle({
-        color: getBureauColor(),
-        weight: 3,
-        opacity: 1,
-        fillColor: getBureauColor(),
-        fillOpacity: 0
-      });
-      return;
-    }
-
-    // Commune choisie mais pas encore de bureau sélectionné
-    if (!selectedNumero) {
-      layer.setStyle({
-        color: '#000000',
-        weight: 1,
-        opacity: 0.6,
-        fillColor: '#aaaaaa',
-        fillOpacity: 0.12   // très peu grisé pour la commune choisie
-      });
-      return;
-    }
-
-    // Commune + bureau choisis -> autres bureaux de la commune
-    layer.setStyle({
-      color: '#000000',
-      weight: 1,
-      opacity: 0.8,
-      fillColor: getMaskColor(),
-      fillOpacity: getOthersOpacity()
-    });
-  });
-}
-
-function getHighlightedLayer() {
-  let res = null;
-  if (!geojsonLayer) return null;
-
-  geojsonLayer.eachLayer(layer => {
-    const props = layer.feature.properties;
-    if (
-      props[COMMUNE_FIELD] === selectedCommune &&
-      props[BV_FIELD] === selectedNumero
-    ) {
-      res = layer;
+    if (uiMode === 'pc') {
+      uiMode = 'mobile';
+      document.body.classList.add('mobile-mode');
+      modeBtn.textContent = 'Mode PC';
+    } else {
+      uiMode = 'pc';
+      document.body.classList.remove('mobile-mode');
+      modeBtn.textContent = 'Mode mobile';
     }
   });
-
-  return res;
-}
-
-// ===============================
-//  Zoom sur commune entière
-// ===============================
-function zoomToCommune(commune) {
-  if (!geojsonLayer) return;
-  let bounds = null;
-
-  geojsonLayer.eachLayer(layer => {
-    const props = layer.feature.properties;
-    if (props[COMMUNE_FIELD] === commune) {
-      bounds = bounds ? bounds.extend(layer.getBounds()) : layer.getBounds();
-    }
-  });
-
-  if (bounds) map.fitBounds(bounds, { padding: [30, 30] });
-}
-
-// ===============================
-//  Sélection du bureau
-// ===============================
-function setHighlighted(commune, numero, options = { zoom: true }) {
-  selectedCommune = commune;
-  selectedNumero  = numero;
-  updateCommuneLabel();
-  updateInfoBV();
-  applyStyles();
-  saveLastSelection();
-  saveSettings();
-
-  const layer = getHighlightedLayer();
-  if (layer && options.zoom) {
-    map.fitBounds(layer.getBounds(), { maxZoom: 17, padding: [40, 40] });
-  }
-}
-
-// ===============================
-//  Listes déroulantes
-// ===============================
-function populateCommuneSelect() {
-  Array.from(communesSet)
-    .sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))
-    .forEach(commune => {
-      const opt = document.createElement('option');
-      opt.value = commune;
-      opt.textContent = commune;
-      selectCommune.appendChild(opt);
-    });
-}
-
-function populateBVSelect(commune) {
-  selectBV.innerHTML = "<option value=''>-- Choisir --</option>";
-
-  if (!commune) return;
-
-  const list = Array.from(bvParCommune.get(commune) || [])
-    .sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
-
-  list.forEach(num => {
-    const opt = document.createElement('option');
-    opt.value = num;
-    opt.textContent = `BV ${num}`;
-    selectBV.appendChild(opt);
-  });
-}
-
-// ===============================
-//  Info bureau
-// ===============================
-function updateInfoBV() {
-  if (!selectedCommune || !selectedNumero || !geojsonLayer) {
-    infoBV.textContent = 'Bureau : aucun sélectionné.';
-    return;
-  }
-
-  let props = null;
-
-  geojsonLayer.eachLayer(layer => {
-    const p = layer.feature.properties;
-    if (p[COMMUNE_FIELD] === selectedCommune && p[BV_FIELD] === selectedNumero) {
-      props = p;
-    }
-  });
-
-  if (!props) {
-    infoBV.textContent = 'Bureau : aucun sélectionné.';
-    return;
-  }
-
-  const nomCommune = props[COMMUNE_FIELD];
-  const num        = props[BV_FIELD];
-  const nomBV      = props.nomBureauVote || '(nom bureau inconnu)';
-  const circo      = props[CIRCO_FIELD] || 'Circo inconnue';
-
-  infoBV.textContent =
-    `Commune : ${nomCommune} | BV ${num} – ${nomBV} | ${circo}`;
-}
-
-// ===============================
-//  Fonds de carte
-// ===============================
-function setBasemap(name, save = true) {
-  if (currentBase === name) return;
-  map.removeLayer(baseLayers[currentBase]);
-  map.addLayer(baseLayers[name]);
-  currentBase = name;
-  if (save) saveSettings();
 }
 
 // ===============================
 //  Favoris & historique
 // ===============================
+function loadFavs() {
+  const raw = localStorage.getItem(STORAGE_KEYS.favs);
+  if (!raw) return [];
+  try { return JSON.parse(raw) || []; } catch { return []; }
+}
+function saveFavs(favs) {
+  localStorage.setItem(STORAGE_KEYS.favs, JSON.stringify(favs));
+}
+function loadHistory() {
+  const raw = localStorage.getItem(STORAGE_KEYS.hist);
+  if (!raw) return [];
+  try { return JSON.parse(raw) || []; } catch { return []; }
+}
+function saveHistory(hist) {
+  localStorage.setItem(STORAGE_KEYS.hist, JSON.stringify(hist));
+}
+
 function refreshFavSelect() {
-  const favs = loadFavs();
   if (!favSelect) return;
+  const favs = loadFavs();
   favSelect.innerHTML = "<option value=''>-- Aucun --</option>";
   favs.forEach((f, idx) => {
     const opt = document.createElement('option');
@@ -423,32 +317,9 @@ function refreshFavSelect() {
     favSelect.appendChild(opt);
   });
 }
-
-function addCurrentToFavs() {
-  if (!selectedCommune || !selectedNumero) {
-    alert('Aucun bureau sélectionné.');
-    return;
-  }
-  const favs = loadFavs();
-  if (!favs.find(f => f.commune === selectedCommune && f.numero === selectedNumero)) {
-    favs.push({ commune: selectedCommune, numero: selectedNumero });
-    saveFavs(favs);
-    refreshFavSelect();
-    alert('Bureau ajouté aux favoris (stocké uniquement sur cet appareil).');
-  } else {
-    alert('Ce bureau est déjà dans les favoris.');
-  }
-}
-
-function clearFavs() {
-  if (!confirm('Effacer tous les favoris sur cet appareil ?')) return;
-  saveFavs([]);
-  refreshFavSelect();
-}
-
 function refreshHistorySelect() {
-  const hist = loadHistory();
   if (!historySelect) return;
+  const hist = loadHistory();
   historySelect.innerHTML = "<option value=''>-- Historique --</option>";
   hist.forEach((h, idx) => {
     const opt = document.createElement('option');
@@ -466,95 +337,16 @@ function pushHistory(entry) {
   refreshHistorySelect();
 }
 
-function clearHistory() {
-  if (!confirm('Effacer tout l’historique de CET appareil ?')) return;
-  saveHistory([]);
-  refreshHistorySelect();
-}
-
 // ===============================
-//  Chargement du GeoJSON
+//  Fonds de carte
 // ===============================
-fetch('bureaux.geojson')
-  .then(r => r.json())
-  .then(data => {
-    loadSettings();
-
-    geojsonLayer = L.geoJSON(data, {
-      style: baseStyle,
-      onEachFeature: (feature, layer) => {
-        const props    = feature.properties;
-        const commune  = props[COMMUNE_FIELD];
-        const num      = props[BV_FIELD];
-
-        communesSet.add(commune);
-        if (!bvParCommune.has(commune)) {
-          bvParCommune.set(commune, new Set());
-        }
-        bvParCommune.get(commune).add(num);
-
-        // Survol
-        layer.on('mouseover', () => {
-          layer.setStyle({ weight: 3 });
-        });
-        layer.on('mouseout', () => {
-          applyStyles();
-        });
-
-        // Clic sur un bureau
-        layer.on('click', () => {
-          selectedCommune = commune;
-          selectedNumero  = num;
-
-          selectCommune.value = commune;
-          populateBVSelect(commune);
-          selectBV.value = num;
-
-          setHighlighted(commune, num);
-
-          const circo = props[CIRCO_FIELD] || 'Circo inconnue';
-          const nomBV = props.nomBureauVote || '';
-          layer.bindPopup(
-            `<b>${commune}</b><br>BV ${num} ${nomBV ? '– ' + nomBV : ''}<br>${circo}`
-          ).openPopup();
-        });
-      }
-    }).addTo(map);
-
-    initialBounds = geojsonLayer.getBounds();
-    map.fitBounds(initialBounds);
-
-    populateCommuneSelect();
-    syncUI();
-    refreshFavSelect();
-    refreshHistorySelect();
-
-    applyURLParamsOrLast();
-    applyStyles();
-  })
-  .catch(err => {
-    console.error('Erreur chargement GeoJSON', err);
-  });
-
-// ===============================
-//  UI sliders
-// ===============================
-function syncUI() {
-  if (othersOpacityVal && othersOpacityInp) {
-    othersOpacityVal.textContent = othersOpacityInp.value + '%';
-  }
+function setBasemap(name, save = true) {
+  if (currentBase === name) return;
+  map.removeLayer(baseLayers[currentBase]);
+  map.addLayer(baseLayers[name]);
+  currentBase = name;
+  if (save) saveSettings();
 }
-if (othersOpacityInp) {
-  othersOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); saveSettings(); });
-}
-if (bureauColorInp) {
-  bureauColorInp.addEventListener('input', () => { applyStyles(); saveSettings(); });
-}
-if (maskColorInp) {
-  maskColorInp.addEventListener('input', () => { applyStyles(); saveSettings(); });
-}
-
-// Fond de carte
 if (basemapSelect) {
   basemapSelect.addEventListener('change', () => {
     setBasemap(basemapSelect.value, true);
@@ -562,8 +354,85 @@ if (basemapSelect) {
 }
 
 // ===============================
-//  Sélecteurs
+//  Info bureau
 // ===============================
+function updateInfoBV() {
+  if (!selectedCommune || !selectedNumero || !geojsonLayer) {
+    infoBV.textContent = 'Bureau : aucun sélectionné.';
+    return;
+  }
+  let props = null;
+  geojsonLayer.eachLayer(layer => {
+    const p = layer.feature.properties;
+    if (p[COMMUNE_FIELD] === selectedCommune && p[BV_FIELD] === selectedNumero) {
+      props = p;
+    }
+  });
+  if (!props) {
+    infoBV.textContent = 'Bureau : aucun sélectionné.';
+    return;
+  }
+  const nomCommune = props[COMMUNE_FIELD];
+  const num        = props[BV_FIELD];
+  const nomBV      = props.nomBureauVote || '(nom bureau inconnu)';
+  const circo      = props[CIRCO_FIELD] || 'Circo inconnue';
+  infoBV.textContent =
+    `Commune : ${nomCommune} | BV ${num} – ${nomBV} | ${circo}`;
+}
+
+// ===============================
+//  Sélection commune / bureau
+// ===============================
+function zoomToCommune(commune) {
+  if (!geojsonLayer) return;
+  let bounds = null;
+  geojsonLayer.eachLayer(layer => {
+    const p = layer.feature.properties;
+    if (p[COMMUNE_FIELD] === commune) {
+      bounds = bounds ? bounds.extend(layer.getBounds()) : layer.getBounds();
+    }
+  });
+  if (bounds) map.fitBounds(bounds, { padding: [30, 30] });
+}
+
+function setHighlighted(commune, numero, options = { zoom: true }) {
+  selectedCommune = commune;
+  selectedNumero  = numero;
+  updateCommuneLabel();
+  updateInfoBV();
+  applyStyles();
+  saveLastSelection();
+  saveSettings();
+
+  const layer = getHighlightedLayer();
+  if (layer && options.zoom) {
+    map.fitBounds(layer.getBounds(), { maxZoom: 17, padding: [40, 40] });
+  }
+}
+
+function populateCommuneSelect() {
+  Array.from(communesSet)
+    .sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))
+    .forEach(commune => {
+      const opt = document.createElement('option');
+      opt.value = commune;
+      opt.textContent = commune;
+      selectCommune.appendChild(opt);
+    });
+}
+function populateBVSelect(commune) {
+  selectBV.innerHTML = "<option value=''>-- Choisir --</option>";
+  if (!commune) return;
+  const list = Array.from(bvParCommune.get(commune) || [])
+    .sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
+  list.forEach(num => {
+    const opt = document.createElement('option');
+    opt.value = num;
+    opt.textContent = `BV ${num}`;
+    selectBV.appendChild(opt);
+  });
+}
+
 selectCommune.addEventListener('change', () => {
   selectedCommune = selectCommune.value || null;
   selectedNumero  = null;
@@ -594,7 +463,95 @@ selectBV.addEventListener('change', () => {
 });
 
 // ===============================
-//  Recherche d'adresse
+//  Chargement du GeoJSON
+// ===============================
+fetch('bureaux.geojson')
+  .then(r => r.json())
+  .then(data => {
+    loadSettings();
+
+    geojsonLayer = L.geoJSON(data, {
+      style: computeStyle,
+      onEachFeature: (feature, layer) => {
+        const props   = feature.properties;
+        const commune = props[COMMUNE_FIELD];
+        const num     = props[BV_FIELD];
+
+        communesSet.add(commune);
+        if (!bvParCommune.has(commune)) {
+          bvParCommune.set(commune, new Set());
+        }
+        bvParCommune.get(commune).add(num);
+
+        layer.on('mouseover', () => {
+          layer.setStyle({ weight: 3 });
+        });
+        layer.on('mouseout', () => {
+          layer.setStyle(computeStyle(layer.feature));
+        });
+
+        layer.on('click', () => {
+          selectedCommune = commune;
+          selectedNumero  = num;
+
+          selectCommune.value = commune;
+          populateBVSelect(commune);
+          selectBV.value = num;
+
+          setHighlighted(commune, num);
+
+          const circo = props[CIRCO_FIELD] || 'Circo inconnue';
+          const nomBV = props.nomBureauVote || '';
+          layer.bindPopup(
+            `<b>${commune}</b><br>BV ${num} ${nomBV ? '– ' + nomBV : ''}<br>${circo}`
+          ).openPopup();
+        });
+      }
+    }).addTo(map);
+
+    initialBounds = geojsonLayer.getBounds();
+    map.fitBounds(initialBounds);
+
+    populateCommuneSelect();
+    syncUI();
+    refreshFavSelect();
+    refreshHistorySelect();
+
+    applyURLParamsOrLast();
+    applyStyles();
+  })
+  .catch(err => console.error('Erreur chargement GeoJSON', err));
+
+// ===============================
+//  Sliders / couleurs
+// ===============================
+function syncUI() {
+  if (othersOpacityVal && othersOpacityInp) {
+    othersOpacityVal.textContent = (othersOpacityInp.value || '0') + '%';
+  }
+}
+if (othersOpacityInp) {
+  othersOpacityInp.addEventListener('input', () => {
+    syncUI();
+    applyStyles();
+    saveSettings();
+  });
+}
+if (bureauColorInp) {
+  bureauColorInp.addEventListener('input', () => {
+    applyStyles();
+    saveSettings();
+  });
+}
+if (maskColorInp) {
+  maskColorInp.addEventListener('input', () => {
+    applyStyles();
+    saveSettings();
+  });
+}
+
+// ===============================
+//  Recherche d’adresse
 // ===============================
 function drawRadiusCircle(lat, lon) {
   if (!radiusSelect) return;
@@ -637,14 +594,14 @@ function searchAddress() {
 
       drawRadiusCircle(lat, lon);
 
-      const pt = turf.point([lon, lat]);
-      let foundCommune = null;
-      let foundNum     = null;
-
       if (!geojsonLayer) {
         searchStatus.textContent = 'Adresse trouvée, mais bureaux non chargés.';
         return;
       }
+
+      const pt = turf.point([lon, lat]);
+      let foundCommune = null;
+      let foundNum     = null;
 
       geojsonLayer.eachLayer(layer => {
         if (turf.booleanPointInPolygon(pt, layer.feature)) {
@@ -689,14 +646,13 @@ searchInput.addEventListener('keydown', e => {
 });
 
 // ===============================
-//  Localisation (GPS)
+//  Localisation GPS
 // ===============================
 function locateMe() {
   if (!navigator.geolocation) {
-    alert('La géolocalisation n’est pas supportée par ce navigateur.');
+    alert('La géolocalisation n’est pas supportée sur ce navigateur.');
     return;
   }
-
   searchStatus.textContent = 'Demande de localisation…';
 
   navigator.geolocation.getCurrentPosition(
@@ -714,7 +670,6 @@ function locateMe() {
         searchStatus.textContent = 'Localisation OK, mais bureaux non chargés.';
         return;
       }
-
       const pt = turf.point([lon, lat]);
       let foundCommune = null;
       let foundNum     = null;
@@ -751,31 +706,16 @@ function locateMe() {
     },
     err => {
       console.error('Erreur geoloc :', err);
-      if (err.code === 1) {
-        searchStatus.textContent = 'Localisation refusée.';
-      } else if (err.code === 2) {
-        searchStatus.textContent = 'Position indisponible.';
-      } else if (err.code === 3) {
-        searchStatus.textContent = 'Délai dépassé.';
-      } else {
-        searchStatus.textContent = 'Erreur de localisation.';
-      }
-      alert("La localisation n’a pas pu être obtenue.\nVérifie les permissions de ton navigateur.");
+      searchStatus.textContent = 'Erreur de localisation.';
+      alert("Impossible d’obtenir la localisation.\nVérifie les permissions de ton navigateur.");
     },
-    {
-      enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 0
-    }
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
   );
 }
-
-if (locateBtn) {
-  locateBtn.addEventListener('click', locateMe);
-}
+if (locateBtn) locateBtn.addEventListener('click', locateMe);
 
 // ===============================
-//  Bouton Reset
+//  Reset / export / lien / aide
 // ===============================
 function resetView() {
   selectedCommune = null;
@@ -792,17 +732,68 @@ function resetView() {
   applyStyles();
   saveLastSelection();
 }
-
 resetBtn.addEventListener('click', resetView);
 
-// ===============================
-//  Favoris & historique UI
-// ===============================
+function buildShareURL(commune, numero) {
+  const url = new URL(window.location.href);
+  commune ? url.searchParams.set('commune', commune) : url.searchParams.delete('commune');
+  numero  ? url.searchParams.set('bv', numero)       : url.searchParams.delete('bv');
+  return url.toString();
+}
+if (copyLinkBtn) {
+  copyLinkBtn.addEventListener('click', () => {
+    if (!selectedCommune || !selectedNumero) {
+      alert('Sélectionne d’abord une commune et un bureau.');
+      return;
+    }
+    const link = buildShareURL(selectedCommune, selectedNumero);
+    navigator.clipboard.writeText(link)
+      .then(() => alert('Lien copié dans le presse-papiers.'))
+      .catch(() => alert(link));
+  });
+}
+
+if (helpBtn) {
+  helpBtn.addEventListener('click', () => {
+    alert(
+      "MODE D’EMPLOI :\n\n" +
+      "1) Sans commune sélectionnée : tous les bureaux sont gris clair.\n" +
+      "2) Commune seule :\n" +
+      "   - Commune choisie : gris très léger.\n" +
+      "   - Autres communes : très foncées.\n" +
+      "3) Commune + bureau :\n" +
+      "   - Bureau choisi : contour couleur, intérieur transparent.\n" +
+      "   - Autres bureaux de la commune : gris moyen (réglable via 'Autres bureaux').\n" +
+      "   - Autres communes : très foncées.\n\n" +
+      "Favoris / Historique : stockés UNIQUEMENT sur cet appareil."
+    );
+  });
+}
+
+// Favoris
 if (favAddBtn) {
-  favAddBtn.addEventListener('click', addCurrentToFavs);
+  favAddBtn.addEventListener('click', () => {
+    if (!selectedCommune || !selectedNumero) {
+      alert('Aucun bureau sélectionné.');
+      return;
+    }
+    const favs = loadFavs();
+    if (!favs.find(f => f.commune === selectedCommune && f.numero === selectedNumero)) {
+      favs.push({ commune: selectedCommune, numero: selectedNumero });
+      saveFavs(favs);
+      refreshFavSelect();
+      alert('Ajouté aux favoris (local).');
+    } else {
+      alert('Déjà dans les favoris.');
+    }
+  });
 }
 if (favClearBtn) {
-  favClearBtn.addEventListener('click', clearFavs);
+  favClearBtn.addEventListener('click', () => {
+    if (!confirm('Effacer tous les favoris sur CET appareil ?')) return;
+    saveFavs([]);
+    refreshFavSelect();
+  });
 }
 if (favSelect) {
   favSelect.addEventListener('change', () => {
@@ -813,17 +804,20 @@ if (favSelect) {
     if (!f) return;
     selectedCommune = f.commune;
     selectedNumero  = f.numero;
-
     selectCommune.value = f.commune;
     populateBVSelect(f.commune);
     selectBV.value = f.numero;
-
     setHighlighted(f.commune, f.numero);
   });
 }
 
+// Historique
 if (histClearBtn) {
-  histClearBtn.addEventListener('click', clearHistory);
+  histClearBtn.addEventListener('click', () => {
+    if (!confirm('Effacer tout l’historique sur CET appareil ?')) return;
+    saveHistory([]);
+    refreshHistorySelect();
+  });
 }
 if (historySelect) {
   historySelect.addEventListener('change', () => {
@@ -839,42 +833,14 @@ if (historySelect) {
       map.setView([h.lat, h.lon], 17);
       drawRadiusCircle(h.lat, h.lon);
     }
-
     if (h.commune && h.numero) {
       selectedCommune = h.commune;
       selectedNumero  = h.numero;
-
       selectCommune.value = h.commune;
       populateBVSelect(h.commune);
       selectBV.value = h.numero;
-
       setHighlighted(h.commune, h.numero);
     }
-  });
-}
-
-// ===============================
-//  Lien partageable
-// ===============================
-function buildShareURL(commune, numero) {
-  const url = new URL(window.location.href);
-  if (commune) url.searchParams.set('commune', commune);
-  else url.searchParams.delete('commune');
-  if (numero) url.searchParams.set('bv', numero);
-  else url.searchParams.delete('bv');
-  return url.toString();
-}
-
-if (copyLinkBtn) {
-  copyLinkBtn.addEventListener('click', () => {
-    if (!selectedCommune || !selectedNumero) {
-      alert('Sélectionne d’abord une commune et un bureau.');
-      return;
-    }
-    const link = buildShareURL(selectedCommune, selectedNumero);
-    navigator.clipboard.writeText(link)
-      .then(() => alert('Lien copié dans le presse-papiers.'))
-      .catch(() => alert(link));
   });
 }
 
@@ -910,6 +876,7 @@ function applyURLParamsOrLast() {
     selectedCommune = last.commune;
     selectCommune.value = last.commune;
     populateBVSelect(last.commune);
+
     if (last.numero && bvParCommune.get(last.commune)?.has(last.numero)) {
       selectBV.value = last.numero;
       selectedNumero = last.numero;
@@ -964,6 +931,7 @@ exportBtn.addEventListener('click', () => {
   }
 });
 
+
 // ===============================
 //  Aide
 // ===============================
@@ -984,3 +952,4 @@ if (helpBtn) {
     );
   });
 }
+
