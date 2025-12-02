@@ -338,7 +338,7 @@ function searchAddress() {
   const q = searchInput.value.trim();
   if (!q) return;
 
-  searchStatus.textContent = 'Recherche…';
+  searchStatus.textContent = 'Recherche de l’adresse…';
 
   fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q))
     .then(r => r.json())
@@ -379,10 +379,11 @@ function searchAddress() {
         setHighlighted(foundCommune, foundNum);
         searchStatus.textContent = `➡ ${foundCommune}, BV ${foundNum}`;
       } else {
-        searchStatus.textContent = 'Hors bureau.';
+        searchStatus.textContent = 'Adresse hors des bureaux enregistrés.';
       }
     })
-    .catch(() => {
+    .catch(err => {
+      console.error(err);
       searchStatus.textContent = 'Erreur de recherche.';
     });
 }
@@ -393,7 +394,7 @@ searchInput.addEventListener('keydown', e => {
 });
 
 // ===============================
-//  Localisation (GPS)
+//  Localisation (GPS) améliorée
 // ===============================
 function locateMe() {
   if (!navigator.geolocation) {
@@ -401,18 +402,23 @@ function locateMe() {
     return;
   }
 
-  searchStatus.textContent = 'Localisation en cours…';
+  searchStatus.textContent = 'Demande de localisation au navigateur…';
 
   navigator.geolocation.getCurrentPosition(
     pos => {
       const lat = pos.coords.latitude;
       const lon = pos.coords.longitude;
 
+      console.log('Position GPS :', lat, lon);
+
       if (searchMarker) map.removeLayer(searchMarker);
       searchMarker = L.marker([lat, lon]).addTo(map);
       map.setView([lat, lon], 17);
 
-      if (!geojsonLayer) return;
+      if (!geojsonLayer) {
+        searchStatus.textContent = 'Localisation OK, mais les bureaux ne sont pas chargés.';
+        return;
+      }
 
       const pt = turf.point([lon, lat]);
       let foundCommune = null;
@@ -437,21 +443,38 @@ function locateMe() {
         setHighlighted(foundCommune, foundNum);
         searchStatus.textContent = `Vous êtes dans : ${foundCommune}, BV ${foundNum}`;
       } else {
-        searchStatus.textContent = 'Vous êtes hors des bureaux enregistrés.';
+        searchStatus.textContent = 'Localisation OK, mais en dehors des bureaux enregistrés.';
       }
     },
     err => {
-      console.error(err);
-      searchStatus.textContent = 'Localisation refusée ou impossible.';
+      console.error('Erreur geoloc :', err);
+
+      if (err.code === 1) {
+        searchStatus.textContent = 'Localisation refusée (vérifiez les permissions du navigateur).';
+      } else if (err.code === 2) {
+        searchStatus.textContent = 'Position indisponible.';
+      } else if (err.code === 3) {
+        searchStatus.textContent = 'Délai de localisation dépassé.';
+      } else {
+        searchStatus.textContent = 'Erreur de localisation.';
+      }
+
+      alert(
+        "La localisation n’a pas pu être obtenue.\n" +
+        "Vérifie dans ton navigateur que la géolocalisation est autorisée pour ce site."
+      );
     },
     {
       enableHighAccuracy: true,
-      timeout: 10000
+      timeout: 15000,
+      maximumAge: 0
     }
   );
 }
 
-locateBtn.addEventListener('click', locateMe);
+if (locateBtn) {
+  locateBtn.addEventListener('click', locateMe);
+}
 
 // ===============================
 //  Export PNG
