@@ -2,7 +2,7 @@
 //  Configuration selon ton GeoJSON
 // ===============================
 const COMMUNE_FIELD = 'nomCommune';
-const BV_FIELD = 'numeroBureauVote';
+const BV_FIELD      = 'numeroBureauVote';
 
 // ===============================
 //  Références DOM
@@ -21,6 +21,7 @@ const searchBtn    = document.getElementById('searchBtn');
 const searchStatus = document.getElementById('searchStatus');
 const exportBtn    = document.getElementById('exportBtn');
 const communeLabel = document.getElementById('communeLabel');
+const locateBtn    = document.getElementById('locateBtn');
 
 // ===============================
 //  Carte Leaflet
@@ -32,14 +33,14 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap'
 }).addTo(map);
 
-let geojsonLayer = null;
-let darkMask = null;
-let searchMarker = null;
-let selectedCommune = null;
-let selectedNumero = null;
+let geojsonLayer     = null;
+let darkMask         = null;
+let searchMarker     = null;
+let selectedCommune  = null;
+let selectedNumero   = null;
 
-const communesSet = new Set();
-const bvParCommune = new Map();
+const communesSet   = new Set();
+const bvParCommune  = new Map();
 
 // ===============================
 //  Helpers réglages
@@ -72,8 +73,8 @@ function updateCommuneLabel() {
 //  Style des bureaux
 // ===============================
 function styleDefault(feature) {
-  const props = feature.properties;
-  const commune = props[COMMUNE_FIELD];
+  const props    = feature.properties;
+  const commune  = props[COMMUNE_FIELD];
 
   // Si une commune est choisie, cacher totalement les autres
   if (selectedCommune && commune !== selectedCommune) {
@@ -85,7 +86,6 @@ function styleDefault(feature) {
     };
   }
 
-  // Sinon (ou si c'est la bonne commune)
   return {
     color: '#000000',
     weight: 1,
@@ -136,9 +136,9 @@ function applyStyles() {
   let highlightedLayer = null;
 
   geojsonLayer.eachLayer(layer => {
-    const props = layer.feature.properties;
+    const props   = layer.feature.properties;
     const commune = props[COMMUNE_FIELD];
-    const num = props[BV_FIELD];
+    const num     = props[BV_FIELD];
 
     // Bureaux d'autres communes -> cachés
     if (selectedCommune && commune !== selectedCommune) {
@@ -214,7 +214,7 @@ function zoomToCommune(commune) {
 // ===============================
 function setHighlighted(commune, numero) {
   selectedCommune = commune;
-  selectedNumero = numero;
+  selectedNumero  = numero;
   updateCommuneLabel();
   applyStyles();
 
@@ -263,9 +263,9 @@ fetch('bureaux.geojson')
     geojsonLayer = L.geoJSON(data, {
       style: styleDefault,
       onEachFeature: (feature, layer) => {
-        const props = feature.properties;
-        const commune = props[COMMUNE_FIELD];
-        const num = props[BV_FIELD];
+        const props    = feature.properties;
+        const commune  = props[COMMUNE_FIELD];
+        const num      = props[BV_FIELD];
 
         communesSet.add(commune);
         if (!bvParCommune.has(commune)) {
@@ -275,7 +275,7 @@ fetch('bureaux.geojson')
 
         layer.on('click', () => {
           selectedCommune = commune;
-          selectedNumero = num;
+          selectedNumero  = num;
 
           selectCommune.value = commune;
           populateBVSelect(commune);
@@ -295,7 +295,7 @@ fetch('bureaux.geojson')
 //  UI sliders
 // ===============================
 function syncUI() {
-  maskOpacityVal.textContent = maskOpacityInp.value + '%';
+  maskOpacityVal.textContent   = maskOpacityInp.value + '%';
   othersOpacityVal.textContent = othersOpacityInp.value + '%';
 }
 maskOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); });
@@ -309,7 +309,7 @@ syncUI();
 // ===============================
 selectCommune.addEventListener('change', () => {
   selectedCommune = selectCommune.value || null;
-  selectedNumero = null;
+  selectedNumero  = null;
   populateBVSelect(selectedCommune);
   updateCommuneLabel();
 
@@ -358,19 +358,19 @@ function searchAddress() {
 
       const pt = turf.point([lon, lat]);
       let foundCommune = null;
-      let foundNum = null;
+      let foundNum     = null;
 
       geojsonLayer.eachLayer(layer => {
         if (turf.booleanPointInPolygon(pt, layer.feature)) {
           const props = layer.feature.properties;
           foundCommune = props[COMMUNE_FIELD];
-          foundNum = props[BV_FIELD];
+          foundNum     = props[BV_FIELD];
         }
       });
 
       if (foundCommune && foundNum) {
         selectedCommune = foundCommune;
-        selectedNumero = foundNum;
+        selectedNumero  = foundNum;
 
         selectCommune.value = foundCommune;
         populateBVSelect(foundCommune);
@@ -391,6 +391,67 @@ searchBtn.addEventListener('click', searchAddress);
 searchInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') searchAddress();
 });
+
+// ===============================
+//  Localisation (GPS)
+// ===============================
+function locateMe() {
+  if (!navigator.geolocation) {
+    alert('La géolocalisation n’est pas supportée par ce navigateur.');
+    return;
+  }
+
+  searchStatus.textContent = 'Localisation en cours…';
+
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+
+      if (searchMarker) map.removeLayer(searchMarker);
+      searchMarker = L.marker([lat, lon]).addTo(map);
+      map.setView([lat, lon], 17);
+
+      if (!geojsonLayer) return;
+
+      const pt = turf.point([lon, lat]);
+      let foundCommune = null;
+      let foundNum     = null;
+
+      geojsonLayer.eachLayer(layer => {
+        if (turf.booleanPointInPolygon(pt, layer.feature)) {
+          const props = layer.feature.properties;
+          foundCommune = props[COMMUNE_FIELD];
+          foundNum     = props[BV_FIELD];
+        }
+      });
+
+      if (foundCommune && foundNum) {
+        selectedCommune = foundCommune;
+        selectedNumero  = foundNum;
+
+        selectCommune.value = foundCommune;
+        populateBVSelect(foundCommune);
+        selectBV.value = foundNum;
+
+        setHighlighted(foundCommune, foundNum);
+        searchStatus.textContent = `Vous êtes dans : ${foundCommune}, BV ${foundNum}`;
+      } else {
+        searchStatus.textContent = 'Vous êtes hors des bureaux enregistrés.';
+      }
+    },
+    err => {
+      console.error(err);
+      searchStatus.textContent = 'Localisation refusée ou impossible.';
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000
+    }
+  );
+}
+
+locateBtn.addEventListener('click', locateMe);
 
 // ===============================
 //  Export PNG
