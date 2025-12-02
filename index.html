@@ -141,6 +141,26 @@
     .btn-small {
       padding: 2px 6px;
     }
+
+    /* Mode mobile : on cache certaines options avancées et on grossit un peu le texte */
+    body.mobile-mode #menu {
+      font-size: 15px;
+    }
+
+    body.mobile-mode #menu button,
+    body.mobile-mode #menu select,
+    body.mobile-mode #menu input[type="text"] {
+      padding: 4px 8px;
+    }
+
+    body.mobile-mode .desktop-only {
+      display: none !important;
+    }
+
+    /* On remonte un peu la carte car il y a souvent moins de barres en haut */
+    body.mobile-mode #map {
+      height: calc(100vh - 80px);
+    }
   </style>
 </head>
 
@@ -163,38 +183,38 @@
       </select>
     </div>
 
-    <!-- Réglages d'opacité -->
-    <div class="group">
+    <!-- Réglages d'opacité (PC uniquement) -->
+    <div class="group desktop-only">
       <label for="maskOpacity">Fond sombre :</label>
       <input id="maskOpacity" type="range" min="0" max="100" value="50">
       <span id="maskOpacityVal">50%</span>
     </div>
 
-    <div class="group">
+    <div class="group desktop-only">
       <label for="othersOpacity">Autres bureaux :</label>
       <input id="othersOpacity" type="range" min="0" max="100" value="70">
       <span id="othersOpacityVal">70%</span>
     </div>
 
-    <!-- Couleurs -->
-    <div class="group">
+    <!-- Couleurs (PC uniquement) -->
+    <div class="group desktop-only">
       <label for="bureauColor">Couleur bureau :</label>
       <input id="bureauColor" type="color" value="#ff0000">
     </div>
 
-    <div class="group">
+    <div class="group desktop-only">
       <label for="maskColor">Couleur fond :</label>
       <input id="maskColor" type="color" value="#000000">
     </div>
 
-    <!-- Focus ON/OFF -->
-    <div class="group">
+    <!-- Focus ON/OFF (PC uniquement) -->
+    <div class="group desktop-only">
       <label for="focusToggle">Focus :</label>
       <input id="focusToggle" type="checkbox" checked>
     </div>
 
-    <!-- Fond de carte -->
-    <div class="group">
+    <!-- Fond de carte (PC uniquement) -->
+    <div class="group desktop-only">
       <label for="basemapSelect">Fond :</label>
       <select id="basemapSelect">
         <option value="osm">OSM</option>
@@ -207,6 +227,11 @@
     <div class="group">
       <button id="exportBtn" class="btn-small">Exporter PNG</button>
       <button id="resetBtn" class="btn-small">Réinitialiser</button>
+    </div>
+
+    <!-- Bouton Mode mobile / Mode PC -->
+    <div class="group">
+      <button id="modeBtn" class="btn-small">Mode mobile</button>
     </div>
 
     <!-- Logo RN -->
@@ -223,8 +248,8 @@
       <input id="searchInput" type="text" style="flex:1; min-width: 200px;" placeholder="Ex : 10 Rue x, Les Sables-d’Olonne">
       <button id="searchBtn" class="btn-small">Rechercher</button>
       <button id="locateBtn" class="btn-small">Me localiser</button>
-      <label for="radiusSelect">Rayon :</label>
-      <select id="radiusSelect">
+      <label for="radiusSelect" class="desktop-only">Rayon :</label>
+      <select id="radiusSelect" class="desktop-only">
         <option value="0">Aucun</option>
         <option value="200">200 m</option>
         <option value="500" selected>500 m</option>
@@ -233,8 +258,8 @@
       <span id="searchStatus"></span>
     </div>
 
-    <!-- Favoris / Historique / Lien / Aide -->
-    <div class="group" style="flex: 1 1 100%; margin-top: 4px;">
+    <!-- Favoris / Historique / Lien / Aide (PC uniquement) -->
+    <div class="group desktop-only" style="flex: 1 1 100%; margin-top: 4px;">
       <button id="favAddBtn" class="btn-small">⭐ Ajouter aux favoris</button>
       <label for="favSelect">Favoris :</label>
       <select id="favSelect">
