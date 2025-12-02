@@ -20,11 +20,12 @@ const searchInput  = document.getElementById('searchInput');
 const searchBtn    = document.getElementById('searchBtn');
 const searchStatus = document.getElementById('searchStatus');
 const exportBtn    = document.getElementById('exportBtn');
+const communeLabel = document.getElementById('communeLabel');
 
 // ===============================
 //  Carte Leaflet
 // ===============================
-const map = L.map('map').setView([46.65, -1.35], 9); // Vue générale Vendée
+const map = L.map('map').setView([46.65, -1.35], 9); // Vue Vendée
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
@@ -59,13 +60,36 @@ function getMaskColor() {
   return maskColorInp.value;
 }
 
+function updateCommuneLabel() {
+  if (selectedCommune) {
+    communeLabel.textContent = `Commune choisie : ${selectedCommune}`;
+  } else {
+    communeLabel.textContent = 'Commune choisie : Toutes communes';
+  }
+}
+
 // ===============================
-//  Style des autres bureaux
+//  Style des bureaux
 // ===============================
 function styleDefault(feature) {
+  const props = feature.properties;
+  const commune = props[COMMUNE_FIELD];
+
+  // Si une commune est choisie, cacher totalement les autres
+  if (selectedCommune && commune !== selectedCommune) {
+    return {
+      color: '#000000',
+      weight: 0,
+      opacity: 0,
+      fillOpacity: 0
+    };
+  }
+
+  // Sinon (ou si c'est la bonne commune)
   return {
-    color: "#000",
+    color: '#000000',
     weight: 1,
+    opacity: 1,
     fillColor: getMaskColor(),
     fillOpacity: getOthersOpacity()
   };
@@ -97,7 +121,7 @@ function createMask(excludedLayer) {
     weight: 0,
     fillColor: getMaskColor(),
     fillOpacity: getMaskOpacity(),
-    fillRule: "evenodd"
+    fillRule: 'evenodd'
   }).addTo(map);
 
   geojsonLayer.bringToFront();
@@ -116,6 +140,18 @@ function applyStyles() {
     const commune = props[COMMUNE_FIELD];
     const num = props[BV_FIELD];
 
+    // Bureaux d'autres communes -> cachés
+    if (selectedCommune && commune !== selectedCommune) {
+      layer.setStyle({
+        color: '#000000',
+        weight: 0,
+        opacity: 0,
+        fillOpacity: 0
+      });
+      return;
+    }
+
+    // Bureau sélectionné
     if (
       selectedCommune &&
       selectedNumero &&
@@ -125,13 +161,16 @@ function applyStyles() {
       layer.setStyle({
         color: getBureauColor(),
         weight: 3,
+        opacity: 1,
         fillColor: getBureauColor(),
         fillOpacity: 0
       });
       highlightedLayer = layer;
-    } else {
-      layer.setStyle(styleDefault(layer.feature));
+      return;
     }
+
+    // Bureau de la commune mais non sélectionné
+    layer.setStyle(styleDefault(layer.feature));
   });
 
   if (highlightedLayer) createMask(highlightedLayer);
@@ -161,7 +200,8 @@ function zoomToCommune(commune) {
   let bounds = null;
 
   geojsonLayer.eachLayer(layer => {
-    if (layer.feature.properties[COMMUNE_FIELD] === commune) {
+    const props = layer.feature.properties;
+    if (props[COMMUNE_FIELD] === commune) {
       bounds = bounds ? bounds.extend(layer.getBounds()) : layer.getBounds();
     }
   });
@@ -175,7 +215,7 @@ function zoomToCommune(commune) {
 function setHighlighted(commune, numero) {
   selectedCommune = commune;
   selectedNumero = numero;
-
+  updateCommuneLabel();
   applyStyles();
 
   const layer = getHighlightedLayer();
@@ -189,9 +229,9 @@ function setHighlighted(commune, numero) {
 // ===============================
 function populateCommuneSelect() {
   Array.from(communesSet)
-    .sort((a, b) => a.localeCompare(b))
+    .sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))
     .forEach(commune => {
-      const opt = document.createElement("option");
+      const opt = document.createElement('option');
       opt.value = commune;
       opt.textContent = commune;
       selectCommune.appendChild(opt);
@@ -204,10 +244,10 @@ function populateBVSelect(commune) {
   if (!commune) return;
 
   const list = Array.from(bvParCommune.get(commune) || [])
-    .sort((a, b) => a.localeCompare(b));
+    .sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
 
   list.forEach(num => {
-    const opt = document.createElement("option");
+    const opt = document.createElement('option');
     opt.value = num;
     opt.textContent = `BV ${num}`;
     selectBV.appendChild(opt);
@@ -217,7 +257,7 @@ function populateBVSelect(commune) {
 // ===============================
 //  Chargement du GeoJSON
 // ===============================
-fetch("bureaux.geojson")
+fetch('bureaux.geojson')
   .then(r => r.json())
   .then(data => {
     geojsonLayer = L.geoJSON(data, {
@@ -228,12 +268,12 @@ fetch("bureaux.geojson")
         const num = props[BV_FIELD];
 
         communesSet.add(commune);
-
-        if (!bvParCommune.has(commune))
+        if (!bvParCommune.has(commune)) {
           bvParCommune.set(commune, new Set());
+        }
         bvParCommune.get(commune).add(num);
 
-        layer.on("click", () => {
+        layer.on('click', () => {
           selectedCommune = commune;
           selectedNumero = num;
 
@@ -248,38 +288,44 @@ fetch("bureaux.geojson")
 
     map.fitBounds(geojsonLayer.getBounds());
     populateCommuneSelect();
+    updateCommuneLabel();
   });
 
 // ===============================
 //  UI sliders
 // ===============================
 function syncUI() {
-  maskOpacityVal.textContent = maskOpacityInp.value + "%";
-  othersOpacityVal.textContent = othersOpacityInp.value + "%";
+  maskOpacityVal.textContent = maskOpacityInp.value + '%';
+  othersOpacityVal.textContent = othersOpacityInp.value + '%';
 }
-maskOpacityInp.addEventListener("input", () => { syncUI(); applyStyles(); });
-othersOpacityInp.addEventListener("input", () => { syncUI(); applyStyles(); });
-bureauColorInp.addEventListener("input", applyStyles);
-maskColorInp.addEventListener("input", applyStyles);
+maskOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); });
+othersOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); });
+bureauColorInp.addEventListener('input', applyStyles);
+maskColorInp.addEventListener('input', applyStyles);
 syncUI();
 
 // ===============================
 //  Sélecteurs
 // ===============================
-selectCommune.addEventListener("change", () => {
+selectCommune.addEventListener('change', () => {
   selectedCommune = selectCommune.value || null;
   selectedNumero = null;
   populateBVSelect(selectedCommune);
+  updateCommuneLabel();
 
-  if (selectedCommune) zoomToCommune(selectedCommune);
-  else map.fitBounds(geojsonLayer.getBounds());
+  if (selectedCommune) {
+    zoomToCommune(selectedCommune);
+  } else if (geojsonLayer) {
+    map.fitBounds(geojsonLayer.getBounds());
+  }
 
   applyStyles();
 });
 
-selectBV.addEventListener("change", () => {
-  if (selectBV.value) setHighlighted(selectedCommune, selectBV.value);
-  else {
+selectBV.addEventListener('change', () => {
+  if (selectBV.value) {
+    setHighlighted(selectedCommune, selectBV.value);
+  } else {
     selectedNumero = null;
     applyStyles();
   }
@@ -292,13 +338,13 @@ function searchAddress() {
   const q = searchInput.value.trim();
   if (!q) return;
 
-  searchStatus.textContent = "Recherche…";
+  searchStatus.textContent = 'Recherche…';
 
-  fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(q))
+  fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q))
     .then(r => r.json())
     .then(results => {
       if (!results.length) {
-        searchStatus.textContent = "Adresse introuvable.";
+        searchStatus.textContent = 'Adresse introuvable.';
         return;
       }
 
@@ -316,12 +362,16 @@ function searchAddress() {
 
       geojsonLayer.eachLayer(layer => {
         if (turf.booleanPointInPolygon(pt, layer.feature)) {
-          foundCommune = layer.feature.properties[COMMUNE_FIELD];
-          foundNum = layer.feature.properties[BV_FIELD];
+          const props = layer.feature.properties;
+          foundCommune = props[COMMUNE_FIELD];
+          foundNum = props[BV_FIELD];
         }
       });
 
       if (foundCommune && foundNum) {
+        selectedCommune = foundCommune;
+        selectedNumero = foundNum;
+
         selectCommune.value = foundCommune;
         populateBVSelect(foundCommune);
         selectBV.value = foundNum;
@@ -329,41 +379,50 @@ function searchAddress() {
         setHighlighted(foundCommune, foundNum);
         searchStatus.textContent = `➡ ${foundCommune}, BV ${foundNum}`;
       } else {
-        searchStatus.textContent = "Hors bureau.";
+        searchStatus.textContent = 'Hors bureau.';
       }
+    })
+    .catch(() => {
+      searchStatus.textContent = 'Erreur de recherche.';
     });
 }
 
-searchBtn.addEventListener("click", searchAddress);
-searchInput.addEventListener("keydown", e => { if (e.key === "Enter") searchAddress(); });
+searchBtn.addEventListener('click', searchAddress);
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') searchAddress();
+});
 
 // ===============================
 //  Export PNG
 // ===============================
-exportBtn.addEventListener("click", () => {
-  const mapDiv = document.getElementById("map");
-  exportBtn.textContent = "Export…";
+exportBtn.addEventListener('click', () => {
+  const mapDiv = document.getElementById('map');
+  exportBtn.textContent = 'Export…';
   exportBtn.disabled = true;
 
   const layer = getHighlightedLayer();
 
   const doCapture = () => {
     html2canvas(mapDiv, { useCORS: true }).then(canvas => {
-      const link = document.createElement("a");
+      const link = document.createElement('a');
       link.download = selectedCommune && selectedNumero
         ? `BV-${selectedCommune}-${selectedNumero}.png`
-        : "Vendee-carte.png";
+        : 'Vendee-carte.png';
       link.href = canvas.toDataURL();
       link.click();
 
-      exportBtn.textContent = "Exporter PNG";
+      exportBtn.textContent = 'Exporter PNG';
       exportBtn.disabled = false;
+    }).catch(() => {
+      exportBtn.textContent = 'Exporter PNG';
+      exportBtn.disabled = false;
+      alert('Erreur lors de l’export PNG.');
     });
   };
 
   if (layer) {
     map.fitBounds(layer.getBounds(), { maxZoom: 17, padding: [40, 40] });
-    map.once("moveend", () => setTimeout(doCapture, 200));
+    map.once('moveend', () => setTimeout(doCapture, 200));
   } else {
     doCapture();
   }
