@@ -18,11 +18,9 @@ const STORAGE_KEYS = {
 // ===============================
 const selectCommune    = document.getElementById('selectCommune');
 const selectBV         = document.getElementById('selectBV');
-const maskOpacityInp   = document.getElementById('maskOpacity');
 const othersOpacityInp = document.getElementById('othersOpacity');
 const bureauColorInp   = document.getElementById('bureauColor');
 const maskColorInp     = document.getElementById('maskColor');
-const maskOpacityVal   = document.getElementById('maskOpacityVal');
 const othersOpacityVal = document.getElementById('othersOpacityVal');
 
 const searchInput   = document.getElementById('searchInput');
@@ -32,13 +30,14 @@ const exportBtn     = document.getElementById('exportBtn');
 const communeLabel  = document.getElementById('communeLabel');
 const locateBtn     = document.getElementById('locateBtn');
 const radiusSelect  = document.getElementById('radiusSelect');
-const focusToggle   = document.getElementById('focusToggle');
 const basemapSelect = document.getElementById('basemapSelect');
 const resetBtn      = document.getElementById('resetBtn');
 const copyLinkBtn   = document.getElementById('copyLinkBtn');
 const helpBtn       = document.getElementById('helpBtn');
 const favAddBtn     = document.getElementById('favAddBtn');
+const favClearBtn   = document.getElementById('favClearBtn');
 const favSelect     = document.getElementById('favSelect');
+const histClearBtn  = document.getElementById('histClearBtn');
 const historySelect = document.getElementById('historySelect');
 const infoBV        = document.getElementById('infoBV');
 const modeBtn       = document.getElementById('modeBtn');
@@ -70,12 +69,10 @@ const map = L.map('map', {
 let currentBase = 'osm';
 
 let geojsonLayer     = null;
-let darkMask         = null;
 let searchMarker     = null;
 let locateCircle     = null;
 let selectedCommune  = null;
 let selectedNumero   = null;
-let focusEnabled     = true;
 let uiMode           = 'pc'; // 'pc' ou 'mobile'
 
 const communesSet   = new Set();
@@ -84,10 +81,6 @@ const bvParCommune  = new Map();
 // ===============================
 //  Helpers réglages & stockage
 // ===============================
-function getMaskOpacity() {
-  return Number(maskOpacityInp?.value || 50) / 100;
-}
-
 function getOthersOpacity() {
   return Number(othersOpacityInp?.value || 70) / 100;
 }
@@ -97,7 +90,7 @@ function getBureauColor() {
 }
 
 function getMaskColor() {
-  return maskColorInp?.value || '#000000';
+  return maskColorInp?.value || '#888888';
 }
 
 function updateCommuneLabel() {
@@ -110,11 +103,9 @@ function updateCommuneLabel() {
 
 function saveSettings() {
   const settings = {
-    maskOpacity:   maskOpacityInp ? maskOpacityInp.value : null,
     othersOpacity: othersOpacityInp ? othersOpacityInp.value : null,
     bureauColor:   bureauColorInp ? bureauColorInp.value : null,
     maskColor:     maskColorInp ? maskColorInp.value : null,
-    focusEnabled:  focusToggle ? focusToggle.checked : true,
     basemap:       currentBase,
     darkMode:      document.body.classList.contains('dark'),
     mode:          uiMode
@@ -127,14 +118,9 @@ function loadSettings() {
   if (!raw) return;
   try {
     const s = JSON.parse(raw);
-    if (s.maskOpacity && maskOpacityInp)   maskOpacityInp.value   = s.maskOpacity;
     if (s.othersOpacity && othersOpacityInp) othersOpacityInp.value = s.othersOpacity;
-    if (s.bureauColor && bureauColorInp)   bureauColorInp.value   = s.bureauColor;
-    if (s.maskColor && maskColorInp)       maskColorInp.value     = s.maskColor;
-    if (typeof s.focusEnabled === 'boolean' && focusToggle) {
-      focusToggle.checked = s.focusEnabled;
-      focusEnabled = s.focusEnabled;
-    }
+    if (s.bureauColor && bureauColorInp)     bureauColorInp.value   = s.bureauColor;
+    if (s.maskColor && maskColorInp)         maskColorInp.value     = s.maskColor;
     if (s.basemap && baseLayers[s.basemap]) {
       setBasemap(s.basemap, false);
       if (basemapSelect) basemapSelect.value = s.basemap;
@@ -209,7 +195,7 @@ if (modeBtn) {
   });
 }
 
-// Auto-mode par défaut selon largeur écran (si aucun réglage en mémoire)
+// Auto-mode par défaut si pas de réglage en mémoire
 if (!localStorage.getItem(STORAGE_KEYS.settings)) {
   if (window.innerWidth < 768) {
     applyMode('mobile', false);
@@ -245,45 +231,10 @@ function styleDefault(feature) {
 }
 
 // ===============================
-//  Masque sombre autour du bureau
-// ===============================
-function createMask(excludedLayer) {
-  if (darkMask) {
-    map.removeLayer(darkMask);
-    darkMask = null;
-  }
-
-  if (!focusEnabled) return;
-  if (!excludedLayer) return;
-
-  const outerRing = [
-    [90, -180], [90, 180], [-90, 180], [-90, -180]
-  ];
-
-  let rings = excludedLayer.getLatLngs();
-  let inner;
-
-  if (Array.isArray(rings[0][0])) inner = rings[0][0];
-  else inner = rings[0];
-
-  darkMask = L.polygon([outerRing, inner], {
-    color: getMaskColor(),
-    weight: 0,
-    fillColor: getMaskColor(),
-    fillOpacity: getMaskOpacity(),
-    fillRule: 'evenodd'
-  }).addTo(map);
-
-  geojsonLayer.bringToFront();
-}
-
-// ===============================
 //  Application des styles
 // ===============================
 function applyStyles() {
   if (!geojsonLayer) return;
-
-  let highlightedLayer = null;
 
   geojsonLayer.eachLayer(layer => {
     const props   = layer.feature.properties;
@@ -315,16 +266,12 @@ function applyStyles() {
         fillColor: getBureauColor(),
         fillOpacity: 0
       });
-      highlightedLayer = layer;
       return;
     }
 
     // Bureau de la commune mais non sélectionné
     layer.setStyle(styleDefault(layer.feature));
   });
-
-  if (highlightedLayer) createMask(highlightedLayer);
-  else createMask(null);
 }
 
 function getHighlightedLayer() {
@@ -481,6 +428,12 @@ function addCurrentToFavs() {
   }
 }
 
+function clearFavs() {
+  if (!confirm('Effacer tous les favoris ?')) return;
+  saveFavs([]);
+  refreshFavSelect();
+}
+
 function refreshHistorySelect() {
   const hist = loadHistory();
   if (!historySelect) return;
@@ -498,6 +451,12 @@ function pushHistory(entry) {
   hist.unshift(entry);
   if (hist.length > 10) hist.pop();
   saveHistory(hist);
+  refreshHistorySelect();
+}
+
+function clearHistory() {
+  if (!confirm('Effacer tout l’historique ?')) return;
+  saveHistory([]);
   refreshHistorySelect();
 }
 
@@ -573,15 +532,9 @@ fetch('bureaux.geojson')
 //  UI sliders
 // ===============================
 function syncUI() {
-  if (maskOpacityVal && maskOpacityInp) {
-    maskOpacityVal.textContent   = maskOpacityInp.value + '%';
-  }
   if (othersOpacityVal && othersOpacityInp) {
     othersOpacityVal.textContent = othersOpacityInp.value + '%';
   }
-}
-if (maskOpacityInp) {
-  maskOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); saveSettings(); });
 }
 if (othersOpacityInp) {
   othersOpacityInp.addEventListener('input', () => { syncUI(); applyStyles(); saveSettings(); });
@@ -591,15 +544,6 @@ if (bureauColorInp) {
 }
 if (maskColorInp) {
   maskColorInp.addEventListener('input', () => { applyStyles(); saveSettings(); });
-}
-
-// Focus toggle
-if (focusToggle) {
-  focusToggle.addEventListener('change', () => {
-    focusEnabled = focusToggle.checked;
-    applyStyles();
-    saveSettings();
-  });
 }
 
 // Fond
@@ -833,7 +777,7 @@ function resetView() {
 
   if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
   if (locateCircle) { map.removeLayer(locateCircle); locateCircle = null; }
-  createMask(null);
+
   updateCommuneLabel();
   updateInfoBV();
   if (initialBounds) map.fitBounds(initialBounds);
@@ -848,6 +792,10 @@ resetBtn.addEventListener('click', resetView);
 // ===============================
 if (favAddBtn) {
   favAddBtn.addEventListener('click', addCurrentToFavs);
+}
+
+if (favClearBtn) {
+  favClearBtn.addEventListener('click', clearFavs);
 }
 
 if (favSelect) {
@@ -866,6 +814,10 @@ if (favSelect) {
 
     setHighlighted(f.commune, f.numero);
   });
+}
+
+if (histClearBtn) {
+  histClearBtn.addEventListener('click', clearHistory);
 }
 
 if (historySelect) {
@@ -979,15 +931,15 @@ if (helpBtn) {
   helpBtn.addEventListener('click', () => {
     alert(
       "MODE D’EMPLOI RAPIDE :\n\n" +
-      "- Choisis une commune, puis un bureau : la carte zoome et met en avant le BV.\n" +
-      "- Mode mobile : interface allégée, idéale sur smartphone.\n" +
-      "- Focus (PC) : active ou désactive le masque sombre autour du bureau.\n" +
-      "- Adresse : cherche une adresse et affiche dans quel bureau elle se trouve.\n" +
-      "- Me localiser : utilise ta position GPS pour trouver ton bureau.\n" +
-      "- Exporter PNG : télécharge une image de la carte actuelle (avec logo).\n" +
-      "- Favoris (PC) : ajoute des bureaux clés pour y revenir rapidement.\n" +
-      "- Historique (PC) : retrouve tes derniers bureaux recherchés / localisés.\n" +
-      "- Copier lien (PC) : génère un lien directement pré-filtré sur le bureau actuel."
+      "- Choisis une commune, puis un bureau : la carte zoome dessus.\n" +
+      "- Mode mobile : interface allégée pour smartphone.\n" +
+      "- Adresse : cherche une adresse et montre dans quel bureau elle tombe.\n" +
+      "- Me localiser : utilise le GPS (surtout sur mobile).\n" +
+      "- Exporter PNG : télécharge une image de la carte actuelle.\n" +
+      "- Favoris (PC) : enregistre des bureaux importants pour les retrouver.\n" +
+      "- Historique (PC) : garde les dernières recherches/localisations.\n" +
+      "- Effacer favoris / historique : tout est effacé SUR TON NAVIGATEUR uniquement.\n" +
+      "- Copier lien (PC) : lien direct vers le bureau / la commune sélectionné(e)."
     );
   });
 }
