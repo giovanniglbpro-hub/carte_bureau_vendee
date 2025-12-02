@@ -5,7 +5,7 @@ const COMMUNE_FIELD = 'nomCommune';
 const BV_FIELD      = 'numeroBureauVote';
 const CIRCO_FIELD   = 'nomCirconscription';
 
-// Clés de stockage local
+// Clés pour le stockage local (uniquement dans ton navigateur)
 const STORAGE_KEYS = {
   settings: 'bvVend_settings',
   last:     'bvVend_last',
@@ -68,27 +68,29 @@ const map = L.map('map', {
 
 let currentBase = 'osm';
 
-let geojsonLayer     = null;
-let searchMarker     = null;
-let locateCircle     = null;
-let selectedCommune  = null;
-let selectedNumero   = null;
-let uiMode           = 'pc'; // 'pc' ou 'mobile'
+let geojsonLayer    = null;
+let searchMarker    = null;
+let locateCircle    = null;
+let selectedCommune = null;
+let selectedNumero  = null;
+let uiMode          = 'pc'; // 'pc' ou 'mobile'
 
-const communesSet   = new Set();
-const bvParCommune  = new Map();
+const communesSet  = new Set();
+const bvParCommune = new Map();
+let initialBounds  = null;
 
 // ===============================
 //  Helpers réglages & stockage
 // ===============================
 function getOthersOpacity() {
-  return Number(othersOpacityInp?.value || 70) / 100;
+  return Number(othersOpacityInp?.value || 30) / 100;
 }
 
 function getBureauColor() {
   return bureauColorInp?.value || '#ff0000';
 }
 
+// Couleur des autres bureaux de la commune
 function getMaskColor() {
   return maskColorInp?.value || '#888888';
 }
@@ -195,7 +197,6 @@ if (modeBtn) {
   });
 }
 
-// Auto-mode par défaut si pas de réglage en mémoire
 if (!localStorage.getItem(STORAGE_KEYS.settings)) {
   if (window.innerWidth < 768) {
     applyMode('mobile', false);
@@ -205,34 +206,21 @@ if (!localStorage.getItem(STORAGE_KEYS.settings)) {
 }
 
 // ===============================
-//  Style des bureaux
+//  Styles des bureaux
 // ===============================
-function styleDefault(feature) {
-  const props    = feature.properties;
-  const commune  = props[COMMUNE_FIELD];
 
-  // Si une commune est choisie, cacher totalement les autres
-  if (selectedCommune && commune !== selectedCommune) {
-    return {
-      color: '#000000',
-      weight: 0,
-      opacity: 0,
-      fillOpacity: 0
-    };
-  }
-
+// Style de base quand aucune commune n'est sélectionnée
+function baseStyle(feature) {
   return {
     color: '#000000',
     weight: 1,
-    opacity: 1,
-    fillColor: getMaskColor(),
-    fillOpacity: getOthersOpacity()
+    opacity: 0.8,
+    fillColor: '#bbbbbb',
+    fillOpacity: 0.2
   };
 }
 
-// ===============================
-//  Application des styles
-// ===============================
+// Applique le style en fonction de la sélection actuelle
 function applyStyles() {
   if (!geojsonLayer) return;
 
@@ -241,24 +229,28 @@ function applyStyles() {
     const commune = props[COMMUNE_FIELD];
     const num     = props[BV_FIELD];
 
-    // Bureaux d'autres communes -> cachés
-    if (selectedCommune && commune !== selectedCommune) {
+    // Aucune commune sélectionnée -> style de base
+    if (!selectedCommune) {
+      layer.setStyle(baseStyle(layer.feature));
+      return;
+    }
+
+    // Autres communes -> très foncé
+    if (commune !== selectedCommune) {
       layer.setStyle({
         color: '#000000',
         weight: 0,
         opacity: 0,
-        fillOpacity: 0
+        fillColor: '#000000',
+        fillOpacity: 0.7
       });
       return;
     }
 
-    // Bureau sélectionné
-    if (
-      selectedCommune &&
-      selectedNumero &&
-      commune === selectedCommune &&
-      num === selectedNumero
-    ) {
+    // Même commune :
+
+    // Bureau sélectionné -> contour couleur, intérieur transparent
+    if (selectedNumero && num === selectedNumero) {
       layer.setStyle({
         color: getBureauColor(),
         weight: 3,
@@ -269,13 +261,32 @@ function applyStyles() {
       return;
     }
 
-    // Bureau de la commune mais non sélectionné
-    layer.setStyle(styleDefault(layer.feature));
+    // Commune choisie mais pas encore de bureau sélectionné
+    if (!selectedNumero) {
+      layer.setStyle({
+        color: '#000000',
+        weight: 1,
+        opacity: 0.6,
+        fillColor: '#aaaaaa',
+        fillOpacity: 0.12   // très peu grisé pour la commune choisie
+      });
+      return;
+    }
+
+    // Commune + bureau choisis -> autres bureaux de la commune
+    layer.setStyle({
+      color: '#000000',
+      weight: 1,
+      opacity: 0.8,
+      fillColor: getMaskColor(),
+      fillOpacity: getOthersOpacity()
+    });
   });
 }
 
 function getHighlightedLayer() {
   let res = null;
+  if (!geojsonLayer) return null;
 
   geojsonLayer.eachLayer(layer => {
     const props = layer.feature.properties;
@@ -294,6 +305,7 @@ function getHighlightedLayer() {
 //  Zoom sur commune entière
 // ===============================
 function zoomToCommune(commune) {
+  if (!geojsonLayer) return;
   let bounds = null;
 
   geojsonLayer.eachLayer(layer => {
@@ -422,14 +434,14 @@ function addCurrentToFavs() {
     favs.push({ commune: selectedCommune, numero: selectedNumero });
     saveFavs(favs);
     refreshFavSelect();
-    alert('Bureau ajouté aux favoris.');
+    alert('Bureau ajouté aux favoris (stocké uniquement sur cet appareil).');
   } else {
     alert('Ce bureau est déjà dans les favoris.');
   }
 }
 
 function clearFavs() {
-  if (!confirm('Effacer tous les favoris ?')) return;
+  if (!confirm('Effacer tous les favoris sur cet appareil ?')) return;
   saveFavs([]);
   refreshFavSelect();
 }
@@ -455,7 +467,7 @@ function pushHistory(entry) {
 }
 
 function clearHistory() {
-  if (!confirm('Effacer tout l’historique ?')) return;
+  if (!confirm('Effacer tout l’historique de CET appareil ?')) return;
   saveHistory([]);
   refreshHistorySelect();
 }
@@ -463,15 +475,13 @@ function clearHistory() {
 // ===============================
 //  Chargement du GeoJSON
 // ===============================
-let initialBounds = null;
-
 fetch('bureaux.geojson')
   .then(r => r.json())
   .then(data => {
     loadSettings();
 
     geojsonLayer = L.geoJSON(data, {
-      style: styleDefault,
+      style: baseStyle,
       onEachFeature: (feature, layer) => {
         const props    = feature.properties;
         const commune  = props[COMMUNE_FIELD];
@@ -483,7 +493,7 @@ fetch('bureaux.geojson')
         }
         bvParCommune.get(commune).add(num);
 
-        // Survol (PC)
+        // Survol
         layer.on('mouseover', () => {
           layer.setStyle({ weight: 3 });
         });
@@ -502,7 +512,6 @@ fetch('bureaux.geojson')
 
           setHighlighted(commune, num);
 
-          // Popup info simple
           const circo = props[CIRCO_FIELD] || 'Circo inconnue';
           const nomBV = props.nomBureauVote || '';
           layer.bindPopup(
@@ -520,7 +529,6 @@ fetch('bureaux.geojson')
     refreshFavSelect();
     refreshHistorySelect();
 
-    // Appliquer éventuels paramètres d'URL ou dernière sélection
     applyURLParamsOrLast();
     applyStyles();
   })
@@ -546,7 +554,7 @@ if (maskColorInp) {
   maskColorInp.addEventListener('input', () => { applyStyles(); saveSettings(); });
 }
 
-// Fond
+// Fond de carte
 if (basemapSelect) {
   basemapSelect.addEventListener('change', () => {
     setBasemap(basemapSelect.value, true);
@@ -738,7 +746,7 @@ function locateMe() {
           lat, lon
         });
       } else {
-        searchStatus.textContent = 'Localisation OK, mais en dehors des bureaux enregistrés (sans doute hors Vendée).';
+        searchStatus.textContent = 'Localisation OK, mais en dehors des bureaux enregistrés.';
       }
     },
     err => {
@@ -793,11 +801,9 @@ resetBtn.addEventListener('click', resetView);
 if (favAddBtn) {
   favAddBtn.addEventListener('click', addCurrentToFavs);
 }
-
 if (favClearBtn) {
   favClearBtn.addEventListener('click', clearFavs);
 }
-
 if (favSelect) {
   favSelect.addEventListener('change', () => {
     const idx = favSelect.value;
@@ -819,7 +825,6 @@ if (favSelect) {
 if (histClearBtn) {
   histClearBtn.addEventListener('click', clearHistory);
 }
-
 if (historySelect) {
   historySelect.addEventListener('change', () => {
     const idx = historySelect.value;
@@ -900,7 +905,6 @@ function applyURLParamsOrLast() {
     }
   }
 
-  // Sinon, dernière sélection enregistrée
   const last = loadLastSelection();
   if (last && last.commune && communesSet.has(last.commune)) {
     selectedCommune = last.commune;
@@ -925,21 +929,58 @@ function applyURLParamsOrLast() {
 }
 
 // ===============================
+//  Export PNG
+// ===============================
+exportBtn.addEventListener('click', () => {
+  const mapDiv = document.getElementById('map');
+  exportBtn.textContent = 'Export...';
+  exportBtn.disabled = true;
+
+  const layer = getHighlightedLayer();
+
+  const doCapture = () => {
+    html2canvas(mapDiv, { useCORS: true }).then(canvas => {
+      const link = document.createElement('a');
+      link.download = selectedCommune && selectedNumero
+        ? `BV-${selectedCommune}-${selectedNumero}.png`
+        : 'Vendee-carte.png';
+      link.href = canvas.toDataURL();
+      link.click();
+
+      exportBtn.textContent = '📷 Exporter PNG';
+      exportBtn.disabled = false;
+    }).catch(() => {
+      exportBtn.textContent = '📷 Exporter PNG';
+      exportBtn.disabled = false;
+      alert('Erreur lors de l’export PNG.');
+    });
+  };
+
+  if (layer) {
+    map.fitBounds(layer.getBounds(), { maxZoom: 17, padding: [40, 40] });
+    map.once('moveend', () => setTimeout(doCapture, 200));
+  } else {
+    doCapture();
+  }
+});
+
+// ===============================
 //  Aide
 // ===============================
 if (helpBtn) {
   helpBtn.addEventListener('click', () => {
     alert(
-      "MODE D’EMPLOI RAPIDE :\n\n" +
-      "- Choisis une commune, puis un bureau : la carte zoome dessus.\n" +
-      "- Mode mobile : interface allégée pour smartphone.\n" +
-      "- Adresse : cherche une adresse et montre dans quel bureau elle tombe.\n" +
-      "- Me localiser : utilise le GPS (surtout sur mobile).\n" +
-      "- Exporter PNG : télécharge une image de la carte actuelle.\n" +
-      "- Favoris (PC) : enregistre des bureaux importants pour les retrouver.\n" +
-      "- Historique (PC) : garde les dernières recherches/localisations.\n" +
-      "- Effacer favoris / historique : tout est effacé SUR TON NAVIGATEUR uniquement.\n" +
-      "- Copier lien (PC) : lien direct vers le bureau / la commune sélectionné(e)."
+      "MODE D’EMPLOI (version finale) :\n\n" +
+      "1) Sans commune sélectionnée : tous les bureaux sont gris clair.\n" +
+      "2) Commune sélectionnée :\n" +
+      "   - Autres communes très foncées.\n" +
+      "   - Bureaux de la commune légèrement grisés.\n" +
+      "3) Bureau sélectionné :\n" +
+      "   - Bureau : contour couleur, intérieur transparent.\n" +
+      "   - Autres bureaux de la commune : gris moyen (réglable avec 'Autres bureaux').\n" +
+      "   - Autres communes : très foncées.\n\n" +
+      "Favoris & historique : stockés uniquement sur TON navigateur.\n" +
+      "Export PNG : capture la carte actuelle (avec le bon zoom)."
     );
   });
 }
