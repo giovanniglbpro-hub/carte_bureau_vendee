@@ -140,6 +140,7 @@
       gap: 6px;
       cursor: pointer;
       transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+      white-space: nowrap;
     }
 
     .pill-button:hover {
@@ -159,11 +160,47 @@
     /* Barre de contrôles */
     #menu {
       width: 100%;
-      padding: 8px 16px 6px;
+      padding: 6px 16px 6px;
       box-sizing: border-box;
       display: flex;
-      justify-content: center;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
       z-index: 900;
+    }
+
+    /* Bouton options mobile */
+    .mobile-only {
+      display: none;
+    }
+
+    #mobileToggle {
+      align-self: center;
+      background: #111827;
+      border-color: rgba(148,163,184,0.9);
+    }
+
+    body.mobile-mode .mobile-only {
+      display: inline-flex;
+    }
+
+    #menuWrapper {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      transition: max-height 0.25s ease, opacity 0.2s ease;
+      overflow: hidden;
+    }
+
+    /* Panneau replié en mobile */
+    body.mobile-mode:not(.mobile-options-open) #menuWrapper {
+      max-height: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+    body.mobile-mode.mobile-options-open #menuWrapper {
+      max-height: 400px;
+      opacity: 1;
     }
 
     #menuInner {
@@ -258,6 +295,7 @@
       align-items: center;
       gap: 4px;
       transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+      white-space: nowrap;
     }
 
     .btn-small:hover {
@@ -357,7 +395,7 @@
       border-color: #e5e7eb;
     }
 
-    /* Mode mobile : interface plus grande */
+    /* Mode mobile : interface plus grande mais panneau repliable */
     body.mobile-mode #menuInner {
       font-size: 14px;
       padding: 10px 10px;
@@ -365,14 +403,14 @@
 
     body.mobile-mode select,
     body.mobile-mode input[type="text"] {
-      min-height: 32px;
-      font-size: 13px;
+      min-height: 34px;
+      font-size: 14px;
       padding: 6px 10px;
     }
 
     body.mobile-mode .btn-small {
-      font-size: 13px;
-      padding: 6px 11px;
+      font-size: 14px;
+      padding: 7px 12px;
     }
 
     body.mobile-mode #map {
@@ -383,16 +421,23 @@
       display: none !important;
     }
 
+    /* Adaptation bandeau en mobile */
+    body.mobile-mode #topBar {
+      padding: 6px 10px;
+    }
+    body.mobile-mode #logoRN {
+      height: 34px;
+    }
+    body.mobile-mode .topBar-title h1 {
+      font-size: 16px;
+    }
+    body.mobile-mode .topBar-title p {
+      display: none; /* on garde juste le titre sur petit écran */
+    }
+
     @media (max-width: 768px) {
       .topBar-inner {
-        flex-direction: column;
-        align-items: center;
-      }
-      .topBar-title h1 {
-        font-size: 16px;
-      }
-      #menuInner {
-        padding: 8px;
+        gap: 8px;
       }
     }
   </style>
@@ -430,95 +475,102 @@
 
   <!-- Barre de contrôles -->
   <div id="menu">
-    <div id="menuInner">
-      <!-- Commune -->
-      <div class="group">
-        <label for="selectCommune">Commune :</label>
-        <select id="selectCommune">
-          <option value="">-- Toutes --</option>
-        </select>
-      </div>
+    <!-- Bouton visible uniquement en mobile -->
+    <button id="mobileToggle" class="pill-button mobile-only">
+      🎛️ Options carte
+    </button>
 
-      <!-- Bureau -->
-      <div class="group">
-        <label for="selectBV">Bureau :</label>
-        <select id="selectBV">
-          <option value="">-- Choisir --</option>
-        </select>
-      </div>
+    <div id="menuWrapper">
+      <div id="menuInner">
+        <!-- Commune -->
+        <div class="group">
+          <label for="selectCommune">Commune :</label>
+          <select id="selectCommune">
+            <option value="">-- Toutes --</option>
+          </select>
+        </div>
 
-      <!-- Opacité autres bureaux de la commune -->
-      <div class="group desktop-only">
-        <label for="othersOpacity">Autres bureaux :</label>
-        <input id="othersOpacity" type="range" min="0" max="100" value="30">
-        <span id="othersOpacityVal">30%</span>
-      </div>
+        <!-- Bureau -->
+        <div class="group">
+          <label for="selectBV">Bureau :</label>
+          <select id="selectBV">
+            <option value="">-- Choisir --</option>
+          </select>
+        </div>
 
-      <!-- Couleurs -->
-      <div class="group desktop-only">
-        <label for="bureauColor">Couleur bureau :</label>
-        <input id="bureauColor" type="color" value="#ff0000">
-      </div>
+        <!-- Opacité autres bureaux de la commune -->
+        <div class="group desktop-only">
+          <label for="othersOpacity">Autres bureaux :</label>
+          <input id="othersOpacity" type="range" min="0" max="100" value="40">
+          <span id="othersOpacityVal">40%</span>
+        </div>
 
-      <div class="group desktop-only">
-        <label for="maskColor">Couleur fond :</label>
-        <input id="maskColor" type="color" value="#888888">
-      </div>
+        <!-- Couleurs -->
+        <div class="group desktop-only">
+          <label for="bureauColor">Couleur bureau :</label>
+          <input id="bureauColor" type="color" value="#ff0000">
+        </div>
 
-      <!-- Fond de carte -->
-      <div class="group desktop-only">
-        <label for="basemapSelect">Fond :</label>
-        <select id="basemapSelect">
-          <option value="osm">OSM</option>
-          <option value="light">Clair</option>
-          <option value="dark">Nuit</option>
-        </select>
-      </div>
+        <div class="group desktop-only">
+          <label for="maskColor">Couleur fond :</label>
+          <input id="maskColor" type="color" value="#888888">
+        </div>
 
-      <!-- Export / Reset -->
-      <div class="group">
-        <button id="exportBtn" class="btn-small">📷 Exporter PNG</button>
-        <button id="resetBtn" class="btn-small">↺ Réinitialiser</button>
-      </div>
+        <!-- Fond de carte -->
+        <div class="group desktop-only">
+          <label for="basemapSelect">Fond :</label>
+          <select id="basemapSelect">
+            <option value="osm">OSM</option>
+            <option value="light">Clair</option>
+            <option value="dark">Nuit</option>
+          </select>
+        </div>
 
-      <!-- Commune choisie -->
-      <div class="group" style="flex: 1 1 100%; justify-content: center;">
-        <span id="communeLabel">Commune choisie : Toutes communes</span>
-      </div>
+        <!-- Export / Reset -->
+        <div class="group">
+          <button id="exportBtn" class="btn-small">📷 Exporter PNG</button>
+          <button id="resetBtn" class="btn-small">↺ Réinitialiser</button>
+        </div>
 
-      <!-- Recherche / localisation -->
-      <div class="group" style="flex: 1 1 100%; margin-top: 4px;">
-        <label for="searchInput">Adresse :</label>
-        <input id="searchInput" type="text" style="flex:1; min-width: 200px;" placeholder="Ex : 10 Rue x, Les Sables-d’Olonne">
-        <button id="searchBtn" class="btn-small">🔎 Rechercher</button>
-        <button id="locateBtn" class="btn-small">📍 Me localiser</button>
-        <label for="radiusSelect" class="desktop-only">Rayon :</label>
-        <select id="radiusSelect" class="desktop-only">
-          <option value="0">Aucun</option>
-          <option value="200">200 m</option>
-          <option value="500" selected>500 m</option>
-          <option value="1000">1 km</option>
-        </select>
-        <span id="searchStatus"></span>
-      </div>
+        <!-- Commune choisie -->
+        <div class="group" style="flex: 1 1 100%; justify-content: center;">
+          <span id="communeLabel">Commune choisie : Toutes communes</span>
+        </div>
 
-      <!-- Favoris / Historique / Aide -->
-      <div class="group desktop-only" style="flex: 1 1 100%; margin-top: 4px;">
-        <button id="favAddBtn" class="btn-small">⭐ Ajouter aux favoris</button>
-        <button id="favClearBtn" class="btn-small">🗑 Favoris</button>
-        <label for="favSelect">Favoris :</label>
-        <select id="favSelect">
-          <option value="">-- Aucun --</option>
-        </select>
+        <!-- Recherche / localisation -->
+        <div class="group" style="flex: 1 1 100%; margin-top: 4px;">
+          <label for="searchInput">Adresse :</label>
+          <input id="searchInput" type="text" style="flex:1; min-width: 200px;" placeholder="Ex : 10 Rue x, Les Sables-d’Olonne">
+          <button id="searchBtn" class="btn-small">🔎 Rechercher</button>
+          <button id="locateBtn" class="btn-small">📍 Me localiser</button>
+          <label for="radiusSelect" class="desktop-only">Rayon :</label>
+          <select id="radiusSelect" class="desktop-only">
+            <option value="0">Aucun</option>
+            <option value="200">200 m</option>
+            <option value="500" selected>500 m</option>
+            <option value="1000">1 km</option>
+          </select>
+          <span id="searchStatus"></span>
+        </div>
 
-        <button id="histClearBtn" class="btn-small">🗑 Hist.</button>
-        <label for="historySelect">Historique :</label>
-        <select id="historySelect">
-          <option value="">-- Vide --</option>
-        </select>
+        <!-- Favoris / Historique / Aide -->
+        <div class="group desktop-only" style="flex: 1 1 100%; margin-top: 4px;">
+          <button id="favAddBtn" class="btn-small">⭐ Ajouter aux favoris</button>
+          <button id="favClearBtn" class="btn-small">🗑 Favoris</button>
+          <label for="favSelect">Favoris :</label>
+          <select id="favSelect">
+            <option value="">-- Aucun --</option>
+          </select>
 
-        <button id="copyLinkBtn" class="btn-small">🔗 Copier lien</button>
-        <button id="helpBtn" class="btn-small">❔ Aide</button>
+          <button id="histClearBtn" class="btn-small">🗑 Hist.</button>
+          <label for="historySelect">Historique :</label>
+          <select id="historySelect">
+            <option value="">-- Vide --</option>
+          </select>
+
+          <button id="copyLinkBtn" class="btn-small">🔗 Copier lien</button>
+          <button id="helpBtn" class="btn-small">❔ Aide</button>
+        </div>
       </div>
     </div>
   </div>
